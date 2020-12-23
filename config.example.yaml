@@ -11,37 +11,19 @@
       root: data/endorser2
       bind_addr: [ 127.0.0.1, 16846 ]
       public_addr: [ 127.0.0.1, 16846 ]
-      connections: [ order1 ]
+      connections: [ order ]
     - id: endorser3
       type: endorser
       root: data/endorser3
       bind_addr: [ 127.0.0.1, 16847 ]
       public_addr: [ 127.0.0.1, 16847 ]
-      connections: [ order2 ]
-    - id: orderer1
+      connections: [ order ]
+    - id: orderer
       type: orderer
-      root: data/orderer1
+      root: data/orderer
       bind_addr: [ 127.0.0.1, 16848 ]
       public_addr: [ 127.0.0.1, 16848 ]
-      connections: [ order2 ]
-    - id: orderer2
-      type: orderer
-      root: data/orderer2
-      bind_addr: [ 127.0.0.1, 16849 ]
-      public_addr: [ 127.0.0.1, 16849 ]
-      connections: [ order3 ]
-    - id: orderer3
-      type: orderer
-      root: data/orderer3
-      bind_addr: [ 127.0.0.1, 16850 ]
-      public_addr: [ 127.0.0.1, 16850 ]
-      connections: [ order4 ]
-    - id: orderer4
-      type: orderer
-      root: data/orderer4
-      bind_addr: [ 127.0.0.1, 16851 ]
-      public_addr: [ 127.0.0.1, 16851 ]
-      connections: [ order1, endorser1 ]
+      connections: [ order ]
 - clients:
     - id: client1
       type: admin
