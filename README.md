@@ -1,6 +1,8 @@
 # Horde Blockchain: A Simple Consortium Blockchain Implementation
 
-![Python application](https://github.com/sunziping2016/horde-blockchain/workflows/Python%20application/badge.svg)
+![Type Check & Lint](https://github.com/sunziping2016/horde-blockchain/workflows/Type%20Check%20&%20Lint/badge.svg)
+![Test](https://github.com/sunziping2016/horde-blockchain/workflows/Test/badge.svg)
+
 
 ## How to Run
 
