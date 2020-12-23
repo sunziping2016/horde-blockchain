@@ -1,0 +1,5 @@
+[MESSAGES CONTROL]
+disable=C0114, C0115, C0116, R0903, W0511, W0613
+
+[FORMAT]
+good-names=i,j,k,m,n

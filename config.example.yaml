@@ -1,4 +1,4 @@
-- Peers:
+- peers:
     - id: endorser1
       type: endorser
       root: data/endorser1
@@ -41,3 +41,16 @@
       bind_addr: [ 127.0.0.1, 16851 ]
       public_addr: [ 127.0.0.1, 16851 ]
       connections: [ order1, endorser1 ]
+- clients:
+    - id: client1
+      type: admin
+      root: data/client1
+    - id: client2
+      type: account
+      root: data/client2
+    - id: client3
+      type: account
+      root: data/client3
+    - id: client4
+      type: account
+      root: data/client4
