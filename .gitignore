@@ -1,0 +1,6 @@
+/.idea/
+/data/*
+!/data/.gitkeep
+__pycache__/
+/venv/
+/config.yaml
