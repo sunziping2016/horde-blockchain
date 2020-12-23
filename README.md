@@ -1,5 +1,7 @@
 # Horde Blockchain: A Simple Consortium Blockchain Implementation
 
+![Python application](https://github.com/sunziping2016/horde-blockchain/workflows/Python%20application/badge.svg)
+
 ## How to Run
 
 ```shell

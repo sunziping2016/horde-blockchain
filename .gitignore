@@ -3,4 +3,5 @@
 !/data/.gitkeep
 __pycache__/
 /venv/
+/.mypy_cache/
 /config.yaml
