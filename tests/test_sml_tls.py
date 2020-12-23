@@ -51,13 +51,12 @@ class SMTLSTestCase(unittest.TestCase):
                 client_id: self.key_pair2[0],
             }, host)
             assert server.sockets is not None
-            port = server.sockets[0].getsockname()
+            port = server.sockets[0].getsockname()[1]
             async with server:
                 reader, writer = await open_sm_tls_connection(
                     client_id, self.key_pair2[1], self.key_pair1[0], host, port)
                 return await SMTLSTestCase.echo_client(reader, writer)
-        loop = asyncio.get_event_loop()
-        result = loop.run_until_complete(test())
+        result = asyncio.run(test())
         self.assertTrue(result)
 
     def test_tls_fail_on_wrong_client_key(self) -> None:
@@ -75,8 +74,7 @@ class SMTLSTestCase(unittest.TestCase):
                 reader, writer = await open_sm_tls_connection(
                     client_id, self.key_pair3[1], self.key_pair1[0], host, port)
                 return await SMTLSTestCase.echo_client(reader, writer)
-        loop = asyncio.get_event_loop()
-        self.assertRaises(HandshakeError, lambda: loop.run_until_complete(test()))
+        self.assertRaises(HandshakeError, lambda: asyncio.run(test()))
 
     def test_tls_fail_on_wrong_server_key(self) -> None:
         """When server offers wrong key, client should reject it"""
@@ -93,8 +91,7 @@ class SMTLSTestCase(unittest.TestCase):
                 reader, writer = await open_sm_tls_connection(
                     client_id, self.key_pair2[1], self.key_pair1[0], host, port)
                 return  await SMTLSTestCase.echo_client(reader, writer)
-        loop = asyncio.get_event_loop()
-        self.assertRaises(HandshakeError, lambda: loop.run_until_complete(test()))
+        self.assertRaises(HandshakeError, lambda: asyncio.run(test()))
 
     def test_tls_fail_on_client_not_exist(self) -> None:
         """When client does not exit, server should reject it"""
@@ -109,8 +106,7 @@ class SMTLSTestCase(unittest.TestCase):
                 reader, writer = await open_sm_tls_connection(
                     'world', self.key_pair2[1], self.key_pair1[0], host, port)
                 return await SMTLSTestCase.echo_client(reader, writer)
-        loop = asyncio.get_event_loop()
-        self.assertRaises(HandshakeError, lambda: loop.run_until_complete(test()))
+        self.assertRaises(HandshakeError, lambda: asyncio.run(test()))
 
 
 if __name__ == '__main__':

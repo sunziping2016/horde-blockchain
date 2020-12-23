@@ -3,6 +3,7 @@ astroid==2.4.2
 cfgv==3.2.0
 distlib==0.3.1
 filelock==3.0.12
+greenlet==1.0a1
 identify==1.5.10
 importlib-metadata==3.3.0
 isort==5.6.4
@@ -16,6 +17,8 @@ pylint==2.6.0
 PyYAML==5.3.1
 six==1.15.0
 snowland-smx==0.3.1
+SQLAlchemy==1.4.0b1
+sqlalchemy-stubs==0.3
 toml==0.10.2
 typed-ast==1.4.1
 typing-extensions==3.7.4.3
