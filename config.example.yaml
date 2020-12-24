@@ -5,25 +5,21 @@
       root: data/endorser1
       bind_addr: [ 127.0.0.1, 16845 ]
       public_addr: [ 127.0.0.1, 16845 ]
-      connections: [ endorser2 ]
     - id: endorser2
       type: endorser
       root: data/endorser2
       bind_addr: [ 127.0.0.1, 16846 ]
       public_addr: [ 127.0.0.1, 16846 ]
-      connections: [ order ]
     - id: endorser3
       type: endorser
       root: data/endorser3
       bind_addr: [ 127.0.0.1, 16847 ]
       public_addr: [ 127.0.0.1, 16847 ]
-      connections: [ order ]
     - id: orderer
       type: orderer
       root: data/orderer
       bind_addr: [ 127.0.0.1, 16848 ]
       public_addr: [ 127.0.0.1, 16848 ]
-      connections: [ order ]
 - clients:
     - id: client1
       type: admin
