@@ -12,16 +12,9 @@ class AccountState(Base):
     __tablename__ = 'account_states'
 
     account = Column(String, primary_key=True)
-    version = Column(Integer, primary_key=True)  # increment from zero
-    value = Column(Numeric(precision=ACCOUNT_PRECISION))  # shoule be 0 when version is zero
+    version = Column(Integer, primary_key=True)  # increment from 1
+    value = Column(Numeric(precision=ACCOUNT_PRECISION))  # should be 0 when version is 1
     hash = Column(BLOB(32))  # hash(account, version, value)
-
-
-class LatestAccountState(Base):
-    __tablename__ = 'latesst_account_statees'
-
-    account = Column(String, primary_key=True)
-    latest_version = Column(Integer)
 
 
 class TransactionMutation(Base):
@@ -53,8 +46,9 @@ class Blockchain(Base):
     __tablename__ = 'blockchains'
 
     # hash(prev_hash, timestamp, transactions)
-    hash = Column(Integer, Sequence('blockchain_hash_seq'), primary_key=True)
+    hash = Column(BLOB(32), primary_key=True)
     prev_hash = Column(BLOB(32), ForeignKey('blockchains.hash'))
     timestamp = Column(TIMESTAMP)
+    number = Column(Integer, Sequence('blockchain_number.seq'), index=True)
 
     transactions = relationship('Transaction', back_populates='blockchain')
