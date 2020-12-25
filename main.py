@@ -3,7 +3,9 @@ import asyncio
 import logging
 import os
 import sys
+import traceback
 from datetime import datetime
+from pysmx.SM2 import generate_keypair  # type: ignore
 
 import yaml
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession  # type: ignore
@@ -13,15 +15,53 @@ from horde.processors import processor_factory
 
 
 async def init(args: argparse.Namespace) -> None:
-    with open(args.config) as f:
-        config = yaml.load(f, Loader=yaml.FullLoader)
+    try:
+        with open(args.config) as f:
+            config = yaml.load(f, Loader=yaml.FullLoader)
+        # Check the config file
+        assert 'public_root' in config
+        assert isinstance(config['public_root'], str)
+        assert 'peers' in config
+        assert isinstance(config['peers'], list)
+        for peercfg in config['peers']:
+            for variable in ['id', 'type', 'root']:
+                assert variable in peercfg
+                assert isinstance(peercfg[variable], str)
+            assert peercfg['id'] != 'coinbase', 'peer id cannot be coinbase'
+            for variable in ['bind_addr', 'public_addr']:
+                assert variable in peercfg
+                assert isinstance(peercfg[variable], list)
+                assert isinstance(peercfg[variable][0], str)
+                assert isinstance(peercfg[variable][1], int)
+        assert 'clients' in config
+        assert isinstance(config['clients'], list)
+        for clientcfg in config['clients']:
+            for variable in ['id', 'type', 'root']:
+                assert variable in clientcfg
+                assert isinstance(clientcfg[variable], str)
+            assert clientcfg['id'] != 'coinbase', 'client id cannot be coinbase'
+    except FileNotFoundError:
+        print('ERROR in reading config file: ')
+        traceback.print_exc()
+        return
+    except AssertionError:
+        print('ERROR in parsing config file: ')
+        traceback.print_exc()
+        return
     timestamp = datetime.utcnow()
+    os.makedirs(config['public_root'], exist_ok=True)
     prev_blockchain_hash = bytes(32)
-    for peer in config['peers']:
-        assert peer['id'] != 'coinbase', 'peer id cannot be coinbase'
-        os.makedirs(peer['root'], exist_ok=True)
-        # TODO: create key pairs for all nodes (peers and clients)
-        engine = create_async_engine('sqlite:///' + os.path.join(peer['root'], 'sqlite.db'))
+    for nodecfg in config['peers'] + config['clients']:
+        os.makedirs(nodecfg['root'], exist_ok=True)
+        generated_key = generate_keypair()
+        with open(os.path.join(nodecfg['root'], 'private.key'), 'wb') as private_file_f:
+            private_file_f.write(generated_key.privateKey)
+        with open(os.path.join(config['public_root'], '{}.pub.key'.format(nodecfg['id'])),
+                  'wb') as public_file_f:
+            public_file_f.write(generated_key.publicKey)
+        if nodecfg['type'] not in ['orderer', 'endorser']:
+            continue
+        engine = create_async_engine('sqlite:///' + os.path.join(nodecfg['root'], 'sqlite.db'))
         async with engine.begin() as conn:
             await conn.run_sync(Base.metadata.drop_all)
             await conn.run_sync(Base.metadata.create_all)
@@ -83,8 +123,8 @@ async def start(args: argparse.Namespace) -> None:
         logging.debug('%s: stopped', args.node)
 
 
-async def client(args: argparse.Namespace):
-    print("This is the client!")
+async def client(args: argparse.Namespace) -> None:
+    print('This is the client!')
 
 
 def parse_extra(parser, namespace):
@@ -99,21 +139,21 @@ def parse_extra(parser, namespace):
 
 def main():
     main_parser = argparse.ArgumentParser()
-    main_parser.add_argument("--verbose", action="store_true", help="enable verbose logging")
-    main_parser.add_argument("--config", type=str, default='./config.yaml',
-                             help="The configuration file, in yaml format.")
-    sub_parsers = main_parser.add_subparsers(title="command", help="available sub-commands")
+    main_parser.add_argument('--verbose', action='store_true', help='enable verbose logging')
+    main_parser.add_argument('--config', type=str, default='./config.yaml',
+                             help='The configuration file, in yaml format.')
+    sub_parsers = main_parser.add_subparsers(title='command', help='available sub-commands')
     # init
-    parser_init = sub_parsers.add_parser("init", help="init the horde blockchain")
+    parser_init = sub_parsers.add_parser('init', help='init the horde blockchain')
     parser_init.set_defaults(func=init)
     # start
-    parser_start = sub_parsers.add_parser("start", help="start the server of the horde blockchain")
+    parser_start = sub_parsers.add_parser('start', help='start the server of the horde blockchain')
     parser_start.add_argument('--node',
                               help='the node to start, start all nodes if not provided')
     parser_start.set_defaults(func=start)
     # client
-    parser_client = sub_parsers.add_parser("client", help="start the client the horde blockchain")
-    parser_client.add_argument("--open", action="store_true", help="open the web page")
+    parser_client = sub_parsers.add_parser('client', help='start the client the horde blockchain')
+    parser_client.add_argument('--open', action='store_true', help='open the web page')
     parser_client.set_defaults(func=client)
 
     args = main_parser.parse_args()
@@ -121,6 +161,8 @@ def main():
         logging.basicConfig(level=logging.DEBUG)
     if 'func' in args:
         asyncio.run(args.func(args))
+    else:
+        main_parser.print_help()
 
 
 if __name__ == '__main__':
