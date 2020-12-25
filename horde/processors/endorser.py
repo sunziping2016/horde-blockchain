@@ -19,5 +19,6 @@ class EndorserProcessor(Router):
             context.request('ping', 'world')
         )
         print('%s: replies: %s %s' % (self.config['id'], reply1, reply2))
-        await asyncio.sleep(1)
+        # Not necessary, this is how to sleep in async way
+        await asyncio.sleep(0.2)
         await context.notify('shutdown')

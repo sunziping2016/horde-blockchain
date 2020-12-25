@@ -274,7 +274,7 @@ class Router:
                 raw_content = (await reader.read(content_length)).decode()
                 return json.loads(raw_content)
             except IncompleteReadError:
-                logging.error('%s: %s connection closed', self.config['id'], id_)
+                logging.info('%s: %s connection closed', self.config['id'], id_)
                 return None
             except Exception as error:
                 traceback.print_exc()
