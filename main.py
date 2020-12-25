@@ -59,6 +59,8 @@ async def init(args: argparse.Namespace) -> None:
         with open(os.path.join(config['public_root'], '{}.pub.key'.format(nodecfg['id'])),
                   'wb') as public_file_f:
             public_file_f.write(generated_key.publicKey)
+        if nodecfg['type'] not in ['orderer', 'endorser']:
+            continue
         engine = create_async_engine('sqlite:///' + os.path.join(nodecfg['root'], 'sqlite.db'))
         async with engine.begin() as conn:
             await conn.run_sync(Base.metadata.drop_all)
