@@ -1,35 +1,35 @@
-- public_root: data/root
-- peers:
-    - id: endorser1
-      type: endorser
-      root: data/endorser1
-      bind_addr: [ 127.0.0.1, 16845 ]
-      public_addr: [ 127.0.0.1, 16845 ]
-    - id: endorser2
-      type: endorser
-      root: data/endorser2
-      bind_addr: [ 127.0.0.1, 16846 ]
-      public_addr: [ 127.0.0.1, 16846 ]
-    - id: endorser3
-      type: endorser
-      root: data/endorser3
-      bind_addr: [ 127.0.0.1, 16847 ]
-      public_addr: [ 127.0.0.1, 16847 ]
-    - id: orderer
-      type: orderer
-      root: data/orderer
-      bind_addr: [ 127.0.0.1, 16848 ]
-      public_addr: [ 127.0.0.1, 16848 ]
-- clients:
-    - id: client1
-      type: admin
-      root: data/client1
-    - id: client2
-      type: account
-      root: data/client2
-    - id: client3
-      type: account
-      root: data/client3
-    - id: client4
-      type: account
-      root: data/client4
+public_root: data/root
+peers:
+  - id: orderer
+    type: orderer
+    root: data/orderer
+    bind_addr: [ 127.0.0.1, 16848 ]
+    public_addr: [ 127.0.0.1, 16848 ]
+  - id: endorser1
+    type: endorser
+    root: data/endorser1
+    bind_addr: [ 127.0.0.1, 16845 ]
+    public_addr: [ 127.0.0.1, 16845 ]
+  - id: endorser2
+    type: endorser
+    root: data/endorser2
+    bind_addr: [ 127.0.0.1, 16846 ]
+    public_addr: [ 127.0.0.1, 16846 ]
+  - id: endorser3
+    type: endorser
+    root: data/endorser3
+    bind_addr: [ 127.0.0.1, 16847 ]
+    public_addr: [ 127.0.0.1, 16847 ]
+clients:
+  - id: client1
+    type: admin
+    root: data/client1
+  - id: client2
+    type: account
+    root: data/client2
+  - id: client3
+    type: account
+    root: data/client3
+  - id: client4
+    type: account
+    root: data/client4
