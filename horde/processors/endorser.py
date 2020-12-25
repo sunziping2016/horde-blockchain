@@ -2,7 +2,7 @@ import asyncio
 from typing import Any
 
 from horde.processors.router import Router, processor, on_server_connected, Context, \
-    on_notified, on_requested, RpcError
+    on_notified, on_requested, RpcError, on_client_connected
 
 
 @processor
@@ -11,7 +11,7 @@ class EndorserProcessor(Router):
         super().__init__(*args, **kwargs)
         self.enable_listen = True
 
-    @on_server_connected()
+    @on_server_connected('orderer')
     async def on_server_connected(self, context: Context) -> None:
         await asyncio.sleep(0.2)
         reply1 = await context.request('ping', 'hello')
@@ -21,6 +21,10 @@ class EndorserProcessor(Router):
         except RpcError as error:
             error2 = error.data
         print('%s: replies: %s (%s, %s)' % (self.config['id'], reply1, reply2, error2))
+
+    @on_client_connected()
+    async def on_client_connected(self, context: Context) -> None:
+        context.close_connection()
 
     @on_requested('who-are-you')
     async def who_are_you_requested(self, data: Any, context: Context) -> str:
@@ -32,6 +36,5 @@ class EndorserProcessor(Router):
 
     @on_notified('shutdown')
     async def shutdown_handler(self, data: Any, context: Context) -> Any:
-        await context.notify('shutdown')
         context.close_connection()
         self.close_server()

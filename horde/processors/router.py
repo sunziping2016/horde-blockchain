@@ -66,7 +66,7 @@ class Context:
     async def request(self, method: str, data: Any = None, peer_id: Optional[str] = None) -> Any:
         if peer_id is None:
             peer_id = self.peer_id
-        await self.router.request(method, data, peer_id)
+        return await self.router.request(method, data, peer_id)
 
     async def notify(self, method: str, data: Any = None, peer_id: Optional[str] = None) -> None:
         if peer_id is None:
