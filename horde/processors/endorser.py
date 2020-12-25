@@ -19,6 +19,6 @@ class EndorserProcessor(Router):
         )
         print('%s: replies: %s %s' % (self.config['id'], reply1, reply2))
 
-    @on_notified('message', 'orderer')
+    @on_notified('message')
     async def on_message_notified(self, data: Any, context: Context) -> None:
         print('%s: message: %s' % (self.config['id'], data))

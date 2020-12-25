@@ -253,7 +253,7 @@ class Router:
                     handler = None
                     if (method, type_) in self.notification_handlers:
                         handler = self.notification_handlers[method, type_]
-                    elif (method, None) in self.request_handlers:
+                    elif (method, None) in self.notification_handlers:
                         handler = self.notification_handlers[method, None]
                     if handler is not None:
                         asyncio.create_task(handler(self, content.get('params'), context))
