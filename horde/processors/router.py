@@ -230,7 +230,10 @@ class Router:
         response = await self.requests[request_id]
         if 'result' in response:
             return response['result']
-        raise RpcError(response.get('error'), 'error from remote')
+        error = response.get('error')
+        if error is None:
+            raise RpcError(None, 'error from remote')
+        raise RpcError(error.get('data'), error.get('message'))
 
     async def notify(self, method: str, data: Any, connection_id: str) -> None:
         writer_queue = self.writer_queues[connection_id]
@@ -336,7 +339,9 @@ class Router:
                                 if handler is None:
                                     response = {
                                         'id': request_id,
-                                        'error': '%s not supported' % method,
+                                        'error': {
+                                            'message': '%s not supported' % method,
+                                        },
                                     }
                                 else:
                                     try:
@@ -348,7 +353,18 @@ class Router:
                                     except RpcError as error:
                                         response = {
                                             'id': request_id,
-                                            'error': error.data,
+                                            'error': {
+                                                'message': str(error),
+                                                'data': error.data,
+                                            },
+                                        }
+                                    except Exception:  # pylint:disable=broad-except
+                                        traceback.print_exc()
+                                        response = {
+                                            'id': request_id,
+                                            'error': {
+                                                'message': 'internal server error',
+                                            },
                                         }
                                 await writer_queue.put(response)
                             tasks.add(asyncio.create_task(run_handler(method, handler, content)))
