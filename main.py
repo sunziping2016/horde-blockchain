@@ -88,10 +88,10 @@ async def init(args: argparse.Namespace) -> None:
 
 async def start(args: argparse.Namespace) -> None:
     with open(args.config) as f:
-        config = yaml.load(f, Loader=yaml.FullLoader)
+        full_config = yaml.load(f, Loader=yaml.FullLoader)
     if args.node is None:
         processes = []
-        for peer in config['peers']:
+        for peer in full_config['peers']:
             process = await asyncio.create_subprocess_exec(
                 sys.executable,
                 *sys.argv,
@@ -102,25 +102,33 @@ async def start(args: argparse.Namespace) -> None:
             processes.append(process)
         await asyncio.gather(*[process.wait() for process in processes])
     else:
-        this_config = None
-        all_configs = {}
-        for peer in config['peers']:
-            all_configs[peer['id']] = peer
+        config = None
+        for peer in full_config['peers']:
             if peer['id'] == args.node:
-                this_config = peer
-        for client2 in config['clients']:
-            all_configs[client2['id']] = client2
-        if this_config is None:
+                config = peer
+        if config is None:
             print('invalid peer id `%s\'' % args.node, file=sys.stderr)
             return
-        router = processor_factory(this_config['type'])(config=this_config, configs=all_configs)
+        router = processor_factory(config['type'])(config, full_config, args)
         logging.debug('%s: started', args.node)
         await router.start()
         logging.debug('%s: stopped', args.node)
 
 
 async def client(args: argparse.Namespace) -> None:
-    print('This is the client!')
+    with open(args.config) as f:
+        full_config = yaml.load(f, Loader=yaml.FullLoader)
+    config = None
+    for client2 in full_config['clients']:
+        if client2['id'] == args.client:
+            config = client2
+    if config is None:
+        print('invalid client id `%s\'' % args.client, file=sys.stderr)
+        return
+    router = processor_factory(config['type'])(config, full_config, args)
+    logging.debug('%s: started', args.client)
+    await router.start()
+    logging.debug('%s: stopped', args.client)
 
 
 def parse_extra(parser, namespace):
@@ -144,11 +152,11 @@ def main():
     parser_init.set_defaults(func=init)
     # start
     parser_start = sub_parsers.add_parser('start', help='start the server of the horde blockchain')
-    parser_start.add_argument('--node',
-                              help='the node to start, start all nodes if not provided')
+    parser_start.add_argument('--node', help='the node to start, start all nodes if not provided')
     parser_start.set_defaults(func=start)
     # client
     parser_client = sub_parsers.add_parser('client', help='start the client the horde blockchain')
+    parser_client.add_argument('client', help='the node to start, start all nodes if not provided')
     parser_client.add_argument('--open', action='store_true', help='open the web page')
     parser_client.set_defaults(func=client)
 

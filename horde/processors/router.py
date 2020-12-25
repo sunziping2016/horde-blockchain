@@ -1,3 +1,4 @@
+import argparse
 import asyncio
 import inspect
 import json
@@ -51,9 +52,6 @@ class Context:
         self.connection_id = connection_id
         self.server_id = server_id
         self.change_peer_config_func = Box(change_id_func)
-
-    def is_peer_unknown(self) -> bool:
-        return self.connection_id not in self.router.configs
 
     def peer_config(self) -> Optional[Any]:
         return self.router.connection_to_config.get(self.connection_id)
@@ -173,7 +171,8 @@ class MissingContentLength(Exception):
 class Router:
     config: Any
     configs: Dict[str, Any]
-    enable_listen: bool  # may be set by subclass
+    full_config: Any
+    args: argparse.Namespace
     server: Dict[str, asyncio.AbstractServer]
     server_to_connections: Dict[Optional[str], Set[str]]
     next_request_id: int
@@ -191,10 +190,11 @@ class Router:
     request_handlers: ClassVar[Dict[Tuple[str, Optional[str]],
                                     Callable[['Router', Any, Context], Awaitable[Any]]]] = {}
 
-    def __init__(self, config: Any, configs: Dict[str, Any]):
+    def __init__(self, config: Any, full_config: Any, args: argparse.Namespace):
         self.config = config
-        self.configs = configs
-        self.enable_listen = False
+        self.configs = {}
+        self.full_config = full_config
+        self.args = args
         self.server = {}
         self.server_to_connections = {}
         self.next_request_id = 0
@@ -203,6 +203,8 @@ class Router:
         self.shutdown_futures = {}
         self.connection_to_config = {}
         self.task_queue = asyncio.Queue()
+        for node in full_config['peers'] + full_config['clients']:
+            self.configs[node['id']] = node
 
     def close_server(self, server_id):
         for connection_id in self.server_to_connections[server_id]:
@@ -405,7 +407,7 @@ class Router:
             del self.connection_to_config[id_]
             logging.info('%s: connection from %s stopped', self.config['id'], id_)
 
-    async def start_server(self, host: str, port: int):
+    async def start_server(self, host: str, port: int) -> str:
         id_ = random_id(8)
 
         async def callback(reader, writer):
@@ -427,13 +429,16 @@ class Router:
                 del self.server[id_]
                 logging.info('%s: server shutdown', self.config['id'])
         await self.task_queue.put(asyncio.create_task(start_server()))
+        return id_
 
-    async def start_connection(self, peer_host, peer_port: int, peer_config: Optional[Any] = None):
+    async def start_connection(self, peer_host, peer_port: int,
+                               peer_config: Optional[Any] = None) -> str:
         id_ = random_id(8)
         assert id_ not in self.server
         reader, writer = await asyncio.open_connection(peer_host, peer_port)
         await self.task_queue.put(asyncio.create_task(
             self.on_connected(id_, None, reader, writer, peer_config)))
+        return id_
 
     async def start(self) -> None:
         tasks: Set[asyncio.Task] = set()

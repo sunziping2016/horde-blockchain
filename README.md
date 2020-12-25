@@ -23,7 +23,7 @@ python3 main.py start
 Then you can open another shell, start a client and open a interactive webpage.
 
 ```shell
-python3 main.py client --open
+python3 main.py client --open client1
 ```
 
 ## Implementation Detail
