@@ -1,30 +1,23 @@
-import asyncio
+import logging
 from typing import Any
 
-from horde.processors.router import Router, Context, processor, on_requested, \
-    on_client_connected, RpcError
+from horde.processors.router import Router, Context, processor, on_requested, on_notified
 
 
 @processor
 class OrdererProcessor(Router):
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.enable_listen = True
 
-    @on_client_connected()
-    async def on_client_connected(self, context: Context) -> None:
-        if context.is_peer_unknown():
-            peer_id = await context.request('who-are-you')
-            print(peer_id)
-            context.change_peer_id(peer_id)
-        await asyncio.sleep(0.5)
-        await context.notify('shutdown')
-        context.close_connection()
-        self.close_server()
+    async def start(self) -> None:
+        host, port = self.config['bind_addr']
+        await self.start_server(host, port)
+        await super().start()
 
     @on_requested('ping')
     async def ping_handler(self, data: Any, context: Context) -> Any:
-        await context.notify('message', 'you are %s' % context.peer_id)
-        if data == 'world':
-            raise RpcError('I don\'t like world')
+        logging.info('%s: pinged with data: %s', self.config['id'], data)
         return data
+
+    @on_notified('shutdown')
+    async def shutdown_handler(self, data: Any, context: Context) -> Any:
+        logging.info('%s: shutdown server', self.config['id'])
+        context.close_server()

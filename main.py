@@ -104,20 +104,16 @@ async def start(args: argparse.Namespace) -> None:
     else:
         this_config = None
         all_configs = {}
-        upstreams = set()
         for peer in config['peers']:
             all_configs[peer['id']] = peer
             if peer['id'] == args.node:
                 this_config = peer
-            elif this_config is None:
-                upstreams.add(peer['id'])
-        for client_ in config['clients']:
-            all_configs[client_['id']] = client_
+        for client2 in config['clients']:
+            all_configs[client2['id']] = client2
         if this_config is None:
             print('invalid peer id `%s\'' % args.node, file=sys.stderr)
             return
-        router = processor_factory(this_config['type'])(config=this_config, configs=all_configs,
-                                                        upstreams=upstreams)
+        router = processor_factory(this_config['type'])(config=this_config, configs=all_configs)
         logging.debug('%s: started', args.node)
         await router.start()
         logging.debug('%s: stopped', args.node)

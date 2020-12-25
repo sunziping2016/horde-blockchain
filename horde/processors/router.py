@@ -39,39 +39,50 @@ class RpcError(Exception):
 
 class Context:
     router: 'Router'
-    peer_id: str
-    change_peer_id_func: Box[Callable[[str], None]]
+    connection_id: str
+    server_id: Optional[str]
+    change_peer_config_func: Box[Callable[[Any], None]]
 
     def __init__(self, router: 'Router',
-                 peer_id: str,
-                 change_id_func: Callable[[str], None]):
+                 connection_id: str,
+                 server_id: Optional[str],
+                 change_id_func: Callable[[Any], None]):
         self.router = router
-        self.peer_id = peer_id
-        self.change_peer_id_func = Box(change_id_func)
+        self.connection_id = connection_id
+        self.server_id = server_id
+        self.change_peer_config_func = Box(change_id_func)
 
     def is_peer_unknown(self) -> bool:
-        return self.peer_id not in self.router.configs
+        return self.connection_id not in self.router.configs
 
     def peer_config(self) -> Optional[Any]:
-        return self.router.configs.get(self.peer_id)
+        return self.router.connection_to_config.get(self.connection_id)
 
-    def change_peer_id(self, new_id) -> None:
-        self.change_peer_id_func.inner(new_id)
+    def set_peer_config(self, new_config) -> None:
+        self.change_peer_config_func.inner(new_config)
 
-    def close_connection(self, peer_id: Optional[str] = None) -> None:
-        if peer_id is None:
-            peer_id = self.peer_id
-        self.router.close_connection(peer_id)
+    def close_connection(self, connection_id: Optional[str] = None) -> None:
+        if connection_id is None:
+            connection_id = self.connection_id
+        self.router.close_connection(connection_id)
 
-    async def request(self, method: str, data: Any = None, peer_id: Optional[str] = None) -> Any:
-        if peer_id is None:
-            peer_id = self.peer_id
-        return await self.router.request(method, data, peer_id)
+    def close_server(self, server_id: Optional[str] = None) -> None:
+        if server_id is None:
+            server_id = self.server_id
+        if server_id is not None:
+            self.router.close_server(server_id)
 
-    async def notify(self, method: str, data: Any = None, peer_id: Optional[str] = None) -> None:
-        if peer_id is None:
-            peer_id = self.peer_id
-        await self.router.notify(method, data, peer_id)
+    async def request(self, method: str, data: Any = None,
+                      connection_id: Optional[str] = None) -> Any:
+        if connection_id is None:
+            connection_id = self.connection_id
+        return await self.router.request(method, data, connection_id)
+
+    async def notify(self, method: str, data: Any = None,
+                     connection_id: Optional[str] = None) -> None:
+        if connection_id is None:
+            connection_id = self.connection_id
+        await self.router.notify(method, data, connection_id)
 
 
 R = TypeVar('R', bound='Router')
@@ -162,13 +173,15 @@ class MissingContentLength(Exception):
 class Router:
     config: Any
     configs: Dict[str, Any]
-    upstreams: Set[str]
     enable_listen: bool  # may be set by subclass
-    server: Optional[asyncio.AbstractServer]
+    server: Dict[str, asyncio.AbstractServer]
+    server_to_connections: Dict[Optional[str], Set[str]]
     next_request_id: int
     requests: Dict[int, Future]
     writer_queues: Dict[str, asyncio.Queue]
     shutdown_futures: Dict[str, Future]
+    connection_to_config: Dict[str, Optional[Any]]
+    task_queue: asyncio.Queue
     server_connected_listeners: ClassVar[Dict[Optional[str],
                                               Callable[['Router', Context], Awaitable[None]]]] = {}
     client_connected_listeners: ClassVar[Dict[Optional[str],
@@ -178,29 +191,34 @@ class Router:
     request_handlers: ClassVar[Dict[Tuple[str, Optional[str]],
                                     Callable[['Router', Any, Context], Awaitable[Any]]]] = {}
 
-    def __init__(self, config: Any, configs: Dict[str, Any], upstreams: Set[str]):
+    def __init__(self, config: Any, configs: Dict[str, Any]):
         self.config = config
         self.configs = configs
-        self.upstreams = upstreams
         self.enable_listen = False
-        self.server = None
+        self.server = {}
+        self.server_to_connections = {}
         self.next_request_id = 0
         self.requests = {}
         self.writer_queues = {}
         self.shutdown_futures = {}
+        self.connection_to_config = {}
+        self.task_queue = asyncio.Queue()
 
-    def close_server(self):
-        if self.server is not None:
-            self.server.close()
+    def close_server(self, server_id):
+        for connection_id in self.server_to_connections[server_id]:
+            exit_future = self.shutdown_futures[connection_id]
+            if not exit_future.done():
+                exit_future.set_result(None)
+        self.server[server_id].close()
 
-    def close_connection(self, peer_id: str) -> None:
-        exit_future = self.shutdown_futures[peer_id]
+    def close_connection(self, connection_id: str) -> None:
+        exit_future = self.shutdown_futures[connection_id]
         if not exit_future.done():
             exit_future.set_result(None)
 
-    async def request(self, method: str, data: Any, peer_id: str) -> Any:
+    async def request(self, method: str, data: Any, connection_id: str) -> Any:
         request_id = self.next_request_id
-        writer_queue = self.writer_queues[peer_id]
+        writer_queue = self.writer_queues[connection_id]
         self.next_request_id += 1
         self.requests[request_id] = asyncio.get_running_loop().create_future()
         content = {
@@ -214,8 +232,8 @@ class Router:
             return response['result']
         raise RpcError(response.get('error'), 'error from remote')
 
-    async def notify(self, method: str, data: Any, peer_id: str) -> None:
-        writer_queue = self.writer_queues[peer_id]
+    async def notify(self, method: str, data: Any, connection_id: str) -> None:
+        writer_queue = self.writer_queues[connection_id]
         raw_content = {
             'method': method,
             'params': data,
@@ -223,27 +241,22 @@ class Router:
         await writer_queue.put(raw_content)
 
     async def on_connected(self, id_: str,
-                           is_server_connected: bool,
+                           server_id: Optional[str],
                            reader: asyncio.StreamReader,
-                           writer: asyncio.StreamWriter) -> None:
+                           writer: asyncio.StreamWriter,
+                           config: Optional[Any] = None) -> None:
         writer_queue: asyncio.Queue = asyncio.Queue()
         exit_future: Future = Future()
+        self.server_to_connections.setdefault(server_id, set()).add(id_)
         self.writer_queues[id_] = writer_queue
         self.shutdown_futures[id_] = exit_future
+        self.connection_to_config[id_] = config
         context: Optional[Context] = None
 
-        def change_peer_id(new_id: str) -> None:
-            nonlocal id_
-            logging.info('%s: connection change id from %s to %s', self.config['id'], id_, new_id)
-            old_future = self.shutdown_futures[id_]
-            old_queue = self.writer_queues[id_]
-            del self.shutdown_futures[id_]
-            del self.writer_queues[id_]
-            self.shutdown_futures[new_id] = old_future
-            self.writer_queues[new_id] = old_queue
-            id_ = new_id
-            assert context is not None
-            context.peer_id = new_id
+        def change_peer_config(new_config: Any) -> None:
+            logging.info('%s: change config from %s to %s', self.config['id'],
+                         self.connection_to_config[id_], new_config)
+            self.connection_to_config[id_] = new_config
 
         async def read_content() -> Any:
             try:
@@ -269,12 +282,13 @@ class Router:
 
         logging.info('%s: connection from %s started', self.config['id'], id_)
         try:
-            context = Context(self, id_, change_peer_id)
+            context = Context(self, id_, server_id, change_peer_config)
             tasks: Set[Future] = set()
 
-            listeners = self.server_connected_listeners if is_server_connected \
+            listeners = self.server_connected_listeners if server_id is None \
                 else self.client_connected_listeners
-            type_ = self.configs[id_]['type'] if id_ in self.configs else None
+            config = self.connection_to_config[id_]
+            type_ = config['type'] if config is not None else None
             if type_ is not None and type_ in listeners:
                 tasks.add(asyncio.create_task(listeners[type_](self, context)))
             elif None in listeners:
@@ -309,7 +323,8 @@ class Router:
                         if 'id' in content and 'method' in content:
                             # request
                             method = content['method']
-                            type_ = self.configs[id_]['type'] if id_ in self.configs else None
+                            config = self.connection_to_config[id_]
+                            type_ = config['type'] if config is not None else None
                             handler = None
                             if (method, type_) in self.request_handlers:
                                 handler = self.request_handlers[method, type_]
@@ -346,7 +361,8 @@ class Router:
                         else:
                             # notification
                             method = content['method']
-                            type_ = self.configs[id_]['type'] if id_ in self.configs else None
+                            config = self.connection_to_config[id_]
+                            type_ = config['type'] if config is not None else None
                             handler = None
                             if (method, type_) in self.notification_handlers:
                                 handler = self.notification_handlers[method, type_]
@@ -365,42 +381,48 @@ class Router:
             raise error
         finally:
             # await server close
+            self.server_to_connections[server_id].remove(id_)
+            if not self.server_to_connections[server_id]:
+                del self.server_to_connections[server_id]
             del self.writer_queues[id_]
             del self.shutdown_futures[id_]
+            del self.connection_to_config[id_]
             logging.info('%s: connection from %s stopped', self.config['id'], id_)
 
-    async def start(self) -> None:
-        task_queue: asyncio.Queue = asyncio.Queue()
+    async def start_server(self, host: str, port: int):
+        id_ = random_id(8)
 
         async def callback(reader, writer):
-            await task_queue.put(asyncio.create_task(self.on_connected(
-                'unknown:' + random_id(8), False, reader, writer)))
-        if self.enable_listen:
-            host, port = self.config['bind_addr']
-            self.server = await asyncio.start_server(
-                callback,
-                host, port
-            )
+            await self.task_queue.put(asyncio.create_task(self.on_connected(
+                random_id(8), id_, reader, writer)))
+        self.server[id_] = await asyncio.start_server(
+            callback,
+            host, port
+        )
 
-            async def start_server():
-                try:
-                    logging.info('%s: server started', self.config['id'])
-                    await self.server.serve_forever()
-                except asyncio.CancelledError:
-                    pass
-                finally:
-                    logging.info('%s: server shutdown', self.config['id'])
-                    await self.server.wait_closed()
-            await task_queue.put(asyncio.create_task(start_server()))
-        for upstream in self.upstreams:
-            peer = self.configs[upstream]
-            peer_host, peer_port = peer['public_addr']
-            reader, writer = await asyncio.open_connection(peer_host, peer_port)
-            await task_queue.put(asyncio.create_task(
-                self.on_connected(peer['id'], True, reader, writer)))
+        async def start_server():
+            try:
+                logging.info('%s: server started', self.config['id'])
+                await self.server[id_].serve_forever()
+            except asyncio.CancelledError:
+                pass
+            finally:
+                await self.server[id_].wait_closed()
+                del self.server[id_]
+                logging.info('%s: server shutdown', self.config['id'])
+        await self.task_queue.put(asyncio.create_task(start_server()))
+
+    async def start_connection(self, peer_host, peer_port: int, peer_config: Optional[Any] = None):
+        id_ = random_id(8)
+        assert id_ not in self.server
+        reader, writer = await asyncio.open_connection(peer_host, peer_port)
+        await self.task_queue.put(asyncio.create_task(
+            self.on_connected(id_, None, reader, writer, peer_config)))
+
+    async def start(self) -> None:
         tasks: Set[asyncio.Task] = set()
-        get_task_queue_task = asyncio.create_task(task_queue.get())
-        while tasks or not task_queue.empty():
+        get_task_queue_task = asyncio.create_task(self.task_queue.get())
+        while tasks or not self.task_queue.empty():
             done, _ = await asyncio.wait({
                 *tasks,
                 get_task_queue_task,
@@ -408,5 +430,5 @@ class Router:
             if get_task_queue_task in done:
                 new_task = await get_task_queue_task
                 tasks.add(new_task)
-                get_task_queue_task = asyncio.create_task(task_queue.get())
+                get_task_queue_task = asyncio.create_task(self.task_queue.get())
             tasks -= done
