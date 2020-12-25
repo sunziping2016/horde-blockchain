@@ -11,9 +11,12 @@ class OrdererProcessor(Router):
 
     @on_client_connected()
     async def on_client_connected(self, context: Context) -> None:
-        print('%s accepted %s' % (self.config['id'], context.peer_id))
+        if context.is_peer_unknown():
+            context.change_peer_id(await context.request('who-are-you'))
+        print(context.peer_config())
+        # await context.notify('shutdown-server')
 
     @on_requested('ping')
     async def ping_handler(self, data: Any, context: Context) -> Any:
-        await context.notify('message', 'it\'s a test')
+        await context.notify('message', 'you are %s' % context.peer_id)
         return data

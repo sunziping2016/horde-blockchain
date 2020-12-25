@@ -78,7 +78,9 @@ async def start(args: argparse.Namespace) -> None:
             return
         router = processor_factory(this_config['type'])(config=this_config, configs=all_configs,
                                                         upstreams=upstreams)
+        logging.debug('%s: started', args.node)
         await router.start()
+        logging.debug('%s: stopped', args.node)
 
 
 async def client(args: argparse.Namespace):

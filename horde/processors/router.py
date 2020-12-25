@@ -6,6 +6,7 @@ import random
 import string
 import sys
 from asyncio import IncompleteReadError, Future
+from contextlib import suppress
 from dataclasses import dataclass
 from typing import Dict, Set, Any, Callable, TypeVar, Generic, Optional, Tuple, Awaitable, ClassVar
 
@@ -36,9 +37,6 @@ class RpcError(Exception):
 
 
 # TODO: able to notify, request (broadcast)
-#   change id
-#   exit
-#   get ids (peer), is peer known
 #   get all kinds of config (self, peer, all)
 class Context:
     router: 'Router'
@@ -57,6 +55,18 @@ class Context:
         self.writer = writer
         self.change_id_func = Box(change_id_func)
         self.set_exit_func = Box(set_exit_func)
+
+    def is_peer_unknown(self) -> bool:
+        return self.peer_id not in self.router.configs
+
+    def peer_config(self) -> Optional[Any]:
+        return self.router.configs.get(self.peer_id)
+
+    def change_peer_id(self, new_id) -> None:
+        self.change_id_func.inner(new_id)
+
+    def close_connection(self) -> None:
+        self.set_exit_func.inner(True)
 
     async def request(self, method: str, data: Any = None, peer_id: Optional[str] = None) -> Any:
         request_id = self.router.next_request_id
@@ -178,6 +188,7 @@ class Router:
 
         def change_id(new_id: str) -> None:
             nonlocal id_
+            logging.debug('%s: connection change id from %s to %s', self.config['id'], id_, new_id)
             del self.writers[id_]
             self.writers[new_id] = writer
             id_ = new_id
@@ -198,7 +209,7 @@ class Router:
         elif None in listeners:
             asyncio.create_task(listeners[None](self, context))
 
-        try:
+        with suppress(IncompleteReadError, ConnectionResetError):
             while not exit_flag:
                 raw_headers = (await reader.readuntil(b'\r\n\r\n')).decode()
                 headers = {}
@@ -217,7 +228,7 @@ class Router:
                 if 'id' in content and 'method' in content:
                     # request
                     method = content['method']
-                    type_ = self.configs[id_]['type_'] if id_ in self.configs else None
+                    type_ = self.configs[id_]['type'] if id_ in self.configs else None
                     handler = None
                     if (method, type_) in self.request_handlers:
                         handler = self.request_handlers[method, type_]
@@ -246,6 +257,7 @@ class Router:
                     response_id = content['id']
                     if response_id in self.requests:
                         self.requests[response_id].set_result(content)
+                        del self.requests[response_id]
                 else:
                     # notification
                     method = content['method']
@@ -257,8 +269,8 @@ class Router:
                         handler = self.notification_handlers[method, None]
                     if handler is not None:
                         asyncio.create_task(handler(self, content.get('params'), context))
-        except IncompleteReadError:
-            pass
+            writer.close()
+            await writer.wait_closed()
 
     async def start(self) -> None:
         futures = []
@@ -276,4 +288,4 @@ class Router:
             reader, writer = await asyncio.open_connection(peer_host, peer_port)
             futures.append(self.on_connected(peer['id'], True, reader, writer))
         if futures:
-            await asyncio.gather(*futures)
+            await asyncio.gather(*futures, return_exceptions=True)
