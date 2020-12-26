@@ -42,9 +42,9 @@ class ClientProcessor(NodeProcessor):
         await super().start()
 
     async def query_blockchain_api(self, request: web.Request) -> web.Response:
-        peer = request.match_info.get('peer')
-        assert peer is not None
         try:
+            peer = request.match_info.get('peer')
+            assert peer is not None
             raw_blockchain = request.match_info.get('blockchain')
             assert raw_blockchain is not None
             blockchain = int(raw_blockchain)
