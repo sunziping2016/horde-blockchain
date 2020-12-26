@@ -73,7 +73,7 @@ async def init(args: argparse.Namespace) -> None:
                         hash=AccountState.compute_hash(account=node['id'], version=1, value=0.0))
                     for node in [{
                         'id': 'coinbase'
-                    }] + config['peers'] + config['clients']
+                    }] + config['clients']
                 ])
                 session.add(
                     Blockchain(

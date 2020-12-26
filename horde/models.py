@@ -27,7 +27,7 @@ class AccountState(Base):
 
 
 class TransactionMutation(Base):
-    __tablename__ = 'transaction_items'
+    __tablename__ = 'transaction_mutations'
 
     # hash(AccountState(account, prev_version).hash, AccountState(account, next_version).hash)
     hash = Column(BLOB(32), primary_key=True)
