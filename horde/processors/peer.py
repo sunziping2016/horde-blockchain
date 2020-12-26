@@ -6,7 +6,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine, AsyncSession  # type: ignore
 from sqlalchemy.orm import subqueryload
 
-from horde.models import Blockchain, Transaction
+from horde.models import Blockchain, Transaction, TransactionMutation
 from horde.processors.node import NodeProcessor
 from horde.processors.router import processor, on_requested, on_client_connected, Context, RpcError
 
@@ -47,11 +47,14 @@ class PeerProcessor(NodeProcessor):
             raise RpcError(None, 'bad request') from error
         # noinspection PyTypeChecker,PyUnresolvedReferences
         result = list((await self.session.execute(
-            select(Blockchain)  # type: ignore
-                .options(subqueryload(Blockchain.transactions)
-                         .subqueryload(Transaction.mutations))
-                .where(Blockchain.number == blockchain_number)
-        )).scalars())
+            select(Blockchain).options(  # type: ignore
+                subqueryload(Blockchain.transactions)
+                    .subqueryload(Transaction.mutations)
+                    .options(
+                        subqueryload(TransactionMutation.prev_account_state),
+                        subqueryload(TransactionMutation.next_account_state)))
+                    .where(Blockchain.number == blockchain_number)
+            )).scalars())
         if len(result) == 0:
             raise RpcError(None, 'not found')
         item: Blockchain = result[0]
@@ -68,8 +71,16 @@ class PeerProcessor(NodeProcessor):
                 'mutations': [{
                     'hash': mutation.hash.hex(),
                     'account': mutation.account,
-                    'prev_version': mutation.prev_version,
-                    'next_version': mutation.next_version,
+                    'prev_account_state': {
+                        'hash': mutation.prev_account_state.hash.hex(),
+                        'version': mutation.prev_account_state.version,
+                        'value': mutation.prev_account_state.value,
+                    },
+                    'next_account_state': {
+                        'hash': mutation.next_account_state.hash.hex(),
+                        'version': mutation.next_account_state.version,
+                        'value': mutation.next_account_state.value,
+                    },
                 } for mutation in transaction.mutations]
             } for transaction in item.transactions]  # type: ignore
         }
