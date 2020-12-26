@@ -2,6 +2,7 @@ import argparse
 import asyncio
 import os
 import webbrowser
+from json import JSONDecodeError
 from typing import Any, Optional
 
 from aiohttp import web
@@ -21,6 +22,7 @@ class ClientProcessor(NodeProcessor):
 
     def generate_routes(self):
         self.app.add_routes([
+            web.post(r'/api/transaction/transfer-money', self.tansfer_money_api),
             web.get(r'/api/{peer}/accounts/', self.query_accounts_api),
             web.get(r'/api/{peer}/blockchains/', self.list_blockchains_api),
             web.get(r'/api/{peer}/blockchains/{blockchain:\d+}', self.query_blockchain_api),
@@ -179,6 +181,45 @@ class ClientProcessor(NodeProcessor):
             return web.json_response({
                 'result': result,
             })
+        except RpcError as error:
+            return web.json_response({
+                'error': {
+                    'message': str(error),
+                    'data': error.data,
+                },
+            }, status=400)
+
+    async def tansfer_money_api(self, request: web.Request) -> web.Response:
+        try:
+            body = await request.json()
+            endorser = body['endorser']
+            assert isinstance(endorser, str)
+            temp_data = body['data']
+            assert isinstance(temp_data, list)
+            assert temp_data  # at least one item
+            data = []
+            for item in temp_data:
+                amount = item['amount']
+                assert isinstance(amount, (float, int))
+                amount = float(amount)
+                target = item['target']
+                assert isinstance(target, str)
+                data.append({
+                    'amount': amount,
+                    'target': target,
+                })
+        except (JSONDecodeError, KeyError, AssertionError):
+            return web.json_response({
+                'error': {
+                    'message': 'invalid query',
+                },
+            }, status=400)
+        connection = self.find_peer(endorser)
+        if connection is None:
+            return web.json_response({'error': {'message': 'endorser offline'}}, status=400)
+        try:
+            result = await self.request('transfer-money', data, connection)
+            return web.json_response({'result': result})
         except RpcError as error:
             return web.json_response({
                 'error': {

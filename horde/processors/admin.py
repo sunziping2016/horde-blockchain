@@ -18,8 +18,10 @@ class AdminProcessor(ClientProcessor):
     async def make_money_api(self, request: web.Request) -> web.Response:
         try:
             data = await request.json()
-            amount = float(data['amount'])
             endorser = data['endorser']
+            assert isinstance(endorser, str)
+            amount = data['amount']
+            assert isinstance(amount, float)
         except (JSONDecodeError, KeyError, ValueError):
             return web.json_response({
                 'error': {
