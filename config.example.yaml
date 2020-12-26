@@ -24,16 +24,18 @@ clients:
   - id: client1
     type: admin
     root: data/client1
+    port: 16489
   - id: client2
     type: account
     root: data/client2
+    port: 16490
   - id: client3
     type: account
     root: data/client3
+    port: 16491
   - id: client4
     type: account
     root: data/client4
+    port: 16492
 web:
-  bind_addr: [ 127.0.0.1, 16849 ]
-  public_addr: [ 127.0.0.1, 16849 ]
   static_root: frontend/dist

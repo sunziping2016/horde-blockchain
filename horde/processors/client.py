@@ -28,18 +28,17 @@ class ClientProcessor(NodeProcessor):
         ])
 
     async def start(self) -> None:
+        host = '127.0.0.1'
+        port = self.config['port']
         # pylint:disable=protected-access
         await self.task_queue.put(asyncio.create_task(web._run_app(
-            self.app,
-            host=self.full_config['web']['bind_addr'][0],
-            port=self.full_config['web']['bind_addr'][1]
-        )))
+            self.app, host=host, port=port)))
         if self.args.open:
             async def open_webpage(url):
                 await asyncio.sleep(0.2)
                 webbrowser.open(url)
             await self.task_queue.put(asyncio.create_task(open_webpage(
-                'http://%s:%d/index.html' % tuple(self.full_config['web']['public_addr']))))
+                'http://%s:%d/index.html' % (host, port))))
         for peer in self.full_config['peers']:
             peer_host, peer_port = peer['public_addr']
             await self.start_connection(peer_host, peer_port, self.configs[peer['id']])
