@@ -73,3 +73,17 @@ class PeerProcessor(NodeProcessor):
                 } for mutation in transaction.mutations]
             } for transaction in item.transactions]  # type: ignore
         }
+
+    @on_requested('query-topology', peer_type='admin')
+    @on_requested('query-topology', peer_type='client')
+    async def query_topology_handler(self, data: Any, context: Context) -> Any:
+        # assert self.session is not None
+        connections = set()
+        if None in self.server_to_connections:
+            connections = self.server_to_connections[None]
+        result = []
+        for connection in connections:
+            config = self.connection_to_config[connection]
+            if config is not None:
+                result.append(config['id'])
+        return result

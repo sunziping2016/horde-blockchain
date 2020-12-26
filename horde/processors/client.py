@@ -20,7 +20,8 @@ class ClientProcessor(NodeProcessor):
         self.generate_routes()
 
     def generate_routes(self):
-        self.app.router.add_get('/api/{peer}/{blockchain}', self.query_blockchain_api)
+        self.app.router.add_get('/api/{peer}/blockchains/{blockchain}', self.query_blockchain_api)
+        self.app.router.add_get('/api/{peer}/connections', self.query_topology_api)
         self.app.router.add_static('/', os.path.join(self.full_config['web']['static_root']))
 
     async def start(self) -> None:
@@ -42,9 +43,9 @@ class ClientProcessor(NodeProcessor):
         await super().start()
 
     async def query_blockchain_api(self, request: web.Request) -> web.Response:
+        peer = request.match_info.get('peer')
+        assert peer is not None
         try:
-            peer = request.match_info.get('peer')
-            assert peer is not None
             raw_blockchain = request.match_info.get('blockchain')
             assert raw_blockchain is not None
             blockchain = int(raw_blockchain)
@@ -69,6 +70,33 @@ class ClientProcessor(NodeProcessor):
             result = await self.request('query-blockchain', {
                 'blockchain_number': blockchain,
             }, connection)
+            return web.json_response({
+                'result': result,
+            })
+        except RpcError as error:
+            return web.json_response({
+                'error': {
+                    'message': str(error),
+                    'data': error.data,
+                },
+            }, status=400)
+
+    async def query_topology_api(self, request: web.Request) -> web.Response:
+        peer = request.match_info.get('peer')
+        assert peer is not None
+        connection: Optional[str] = None
+        for connection2, config in self.connection_to_config.items():
+            if config is not None and config['id'] == peer:
+                connection = connection2
+                break
+        if connection is None:
+            return web.json_response({
+                'error': {
+                    'message': 'peer offline',
+                },
+            }, status=400)
+        try:
+            result = await self.request('query-topology', None, connection)
             return web.json_response({
                 'result': result,
             })
