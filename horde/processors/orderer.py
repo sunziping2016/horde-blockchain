@@ -28,12 +28,9 @@ class OrdererProcessor(PeerProcessor):
     @on_requested('submit', peer_type='admin')
     @on_requested('submit', peer_type='client')
     async def submit(self, data: Any, context: Context) -> Any:
-        # TODO: validate signature #8 and detect conflicts
+        # TODO: validate signature and detect conflicts #8
         self.transactions.append(data)
         await self.new_blockchain_signal.put(None)
-        return {
-            'ok': True,
-        }
 
     async def start(self) -> None:
         async def create_blockchain_loop():
