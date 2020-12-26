@@ -103,66 +103,38 @@ class PeerProcessor(NodeProcessor):
                 assert offset >= 0
         except (AssertionError, TypeError, KeyError) as error:
             raise RpcError(None, 'bad request') from error
-        if account is not None:
-            if version is not None:
-                # noinspection PyTypeChecker,PyUnresolvedReferences
-                result = list((await self.session.execute(
-                    select(AccountState).where(  # type: ignore
-                        and_(AccountState.account == account,
-                             AccountState.version == version)
-                    ).limit(limit + offset)
-                )).scalars())
-            elif latest_version:
-                # noinspection PyTypeChecker,PyUnresolvedReferences
-                result = list((await self.session.execute(
-                    select(AccountState).where(  # type: ignore
-                        and_(AccountState.account == account,
-                             AccountState.version == select([func.max(AccountState.version)]).where(
-                                 AccountState.account == account))
-                    ).limit(limit + offset)
-                )).scalars())
-            else:
-                # noinspection PyTypeChecker,PyUnresolvedReferences
-                result = list((await self.session.execute(
-                    select(AccountState).where(AccountState.account == account)  # type: ignore
-                        .limit(limit + offset)
-                )).scalars())
+        condition: Any = None
+        if account is not None and version is not None:
+            condition = and_(AccountState.account == account, AccountState.version == version)
+        elif account is not None:
+            condition = AccountState.account == account
         elif version is not None:
-            # noinspection PyTypeChecker,PyUnresolvedReferences
-            result = list((await self.session.execute(
-                select(AccountState).where(  # type: ignore
-                    AccountState.version == version
-                ).limit(limit + offset)
-            )).scalars())
-        elif latest_version:
-            # noinspection PyTypeChecker,PyUnresolvedReferences
-            subq = (await self.session.execute(
-                select([AccountState.account, func.max(AccountState.version)
-                       .label('maxversion')])  # type: ignore
-                    .group_by(AccountState.account)
-            ))
-            # noinspection PyTypeChecker,PyUnresolvedReferences
-            result = list((await self.session.execute(
-                select(AccountState).join(  # type: ignore
-                    subq,
-                    and_(
-                        AccountState.account == subq.account,
-                        AccountState.version == subq.maxversion
-                    )
-                ).limit(limit + offset)
-            )).scalars())
+            condition = AccountState.version == version
+        if version is None and latest_version:
+            subquery = select(AccountState.account, func.max(AccountState.version))  # type: ignore
+            if condition is not None:
+                subquery = subquery.where(condition)
+            subquery = subquery.group_by(AccountState.account)
+            # noinspection PyUnresolvedReferences,PyTypeChecker
+            stmt = select(AccountState).join(  # type: ignore
+                subquery,
+                and_(
+                    AccountState.account == subquery.account,  # type: ignore
+                    AccountState.version == subquery.version,  # type: ignore
+                ),
+            )
         else:
-            # noinspection PyTypeChecker,PyUnresolvedReferences
-            result = list((await self.session.execute(
-                select(AccountState).limit(limit + offset)  # type: ignore
-            )).scalars())
-        if len(result) < offset:
-            raise RpcError(None, 'not found')
+            # noinspection PyTypeChecker
+            stmt = select(AccountState)  # type: ignore
+            if condition is not None:
+                stmt = stmt.where(condition)  # type: ignore
+        stmt = stmt.offset(offset).limit(limit)  # type: ignore
+        result = list((await self.session.execute(stmt)).scalars())
         return [{
             'account': item.account,
             'version': item.version,
-            'value': item.value
-        } for item in result[offset:]]
+            'value': float(item.value),
+        } for item in result]
 
     @on_requested('list-blockchains', peer_type='admin')
     @on_requested('list-blockchains', peer_type='client')
