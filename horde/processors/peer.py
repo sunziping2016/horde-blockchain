@@ -39,8 +39,8 @@ class PeerProcessor(NodeProcessor):
     @on_requested('query-blockchain', peer_type='admin')
     @on_requested('query-blockchain', peer_type='client')
     async def query_blockchain_handler(self, data: Any, context: Context) -> Any:
+        assert self.session is not None
         try:
-            assert self.session is not None
             blockchain_number = data['blockchain_number']
             assert isinstance(blockchain_number, int)
         except (AssertionError, TypeError, KeyError) as error:
@@ -88,8 +88,8 @@ class PeerProcessor(NodeProcessor):
     @on_requested('query-accounts', peer_type='admin')
     @on_requested('query-accounts', peer_type='client')
     async def query_accounts_handler(self, data: Any, context: Context) -> Any:
+        assert self.session is not None
         try:
-            assert self.session is not None
             account = None
             if 'account' in data:
                 account = data['account']
@@ -99,7 +99,7 @@ class PeerProcessor(NodeProcessor):
                 version = data['version']
                 assert isinstance(version, int)
             latest_version = None
-            if version is not None and 'latest_version' in data:
+            if version is None and 'latest_version' in data:
                 latest_version = data['latest_version']
                 assert isinstance(latest_version, bool)
             limit = 15
@@ -122,18 +122,18 @@ class PeerProcessor(NodeProcessor):
         elif version is not None:
             condition = AccountState.version == version
         if version is None and latest_version:
-            subquery = select(AccountState.account, func.max(AccountState.version))  # type: ignore
+            subquery = select(
+                AccountState.account,  # type: ignore
+                func.max(AccountState.version).label('latest_version')
+            )
             if condition is not None:
                 subquery = subquery.where(condition)
-            subquery = subquery.group_by(AccountState.account)
+            subquery = subquery.group_by(AccountState.account).alias('latest')  # type: ignore
             # noinspection PyUnresolvedReferences,PyTypeChecker
-            stmt = select(AccountState).join(  # type: ignore
-                subquery,
-                and_(
-                    AccountState.account == subquery.account,  # type: ignore
-                    AccountState.version == subquery.version,  # type: ignore
-                ),
-            )
+            stmt = select(AccountState).join(subquery, and_(  # type: ignore
+                AccountState.account == subquery.c.account,  # type: ignore
+                AccountState.version == subquery.c.latest_version,  # type: ignore
+            ))
         else:
             # noinspection PyTypeChecker
             stmt = select(AccountState)  # type: ignore
@@ -150,8 +150,8 @@ class PeerProcessor(NodeProcessor):
     @on_requested('list-blockchains', peer_type='admin')
     @on_requested('list-blockchains', peer_type='client')
     async def list_blockchains_handler(self, data: Any, context: Context) -> Any:
+        assert self.session is not None
         try:
-            assert self.session is not None
             asc = False
             if 'asc' in data:
                 asc = data['asc']

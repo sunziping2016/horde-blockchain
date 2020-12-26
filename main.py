@@ -69,7 +69,7 @@ async def init(args: argparse.Namespace) -> None:
             async with session.begin():
                 session.add_all([
                     AccountState(
-                        account=node['id'], version=0, value=0.0,
+                        account=node['id'], version=1, value=0.0,
                         hash=AccountState.compute_hash(account=node['id'], version=1, value=0.0))
                     for node in [{
                         'id': 'coinbase'
