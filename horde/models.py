@@ -1,9 +1,10 @@
+import random
 from datetime import datetime
 from typing import List
 
+from pysmx.SM2 import Sign  # type: ignore
 from pysmx.SM3 import digest  # type: ignore
-from sqlalchemy import Column, Integer, String, Numeric, BLOB, Sequence, ForeignKey, \
-    LargeBinary, TIMESTAMP
+from sqlalchemy import Column, Integer, String, Numeric, BLOB, Sequence, ForeignKey, TIMESTAMP
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import relationship
 
@@ -47,28 +48,36 @@ class TransactionMutation(Base):
     transaction = relationship('Transaction', back_populates='mutations')
 
     @staticmethod
-    def compute_hash(prev: AccountState, next_: AccountState) -> bytes:
-        assert prev.account == next_.account
-        return digest(AccountState.compute_hash(prev.account, prev.version, prev.value) +
-                      AccountState.compute_hash(next_.account, next_.version, next_.value))
+    def compute_hash(prev_hash: bytes, next_hash: bytes) -> bytes:
+        return digest(prev_hash + next_hash)
 
 
 class Transaction(Base):
     __tablename__ = 'transactions'
 
-    hash = Column(BLOB(32), primary_key=True)  # hash(endorser, signature, mutations)
+    # hash(endorser, signature, timestamp, mutations.hash)
+    hash = Column(BLOB(32), primary_key=True)
+    # endorser.sign(endorser, timestamp, mutations.hash)
+    signature = Column(BLOB(64), nullable=False)
     endorser = Column(String, nullable=False)
-    signature = Column(LargeBinary, nullable=False)  # endorser.sign(mutations.hash)
+    timestamp = Column(TIMESTAMP, nullable=False)
     blockchain_hash = Column(Integer, ForeignKey('blockchains.hash'), nullable=False)
 
     mutations = relationship('TransactionMutation', uselist=True, back_populates='transaction')
     blockchain = relationship('Blockchain', back_populates='transactions')
 
     @staticmethod
-    def compute_hash(endorser: str, signature: bytes,
-                     mutations: List[TransactionMutation]) -> bytes:
-        return digest(b'%r,' % endorser + signature +
-                      b''.join([mutation.hash for mutation in mutations]))
+    def compute_hash(endorser: str, signature: bytes, timestamp: datetime,
+                     mutations: List[bytes]) -> bytes:
+        return digest(b'%r,%s,' % (endorser, timestamp.isoformat().encode()) +
+                      signature + b''.join(mutations))
+
+    @staticmethod
+    def compute_signature(private_key: bytes, endorser: str,
+                          timestamp: datetime, mutations: List[bytes]):
+        content = b'%r,%s,' % (endorser, timestamp.isoformat().encode()) + b''.join(mutations)
+        return Sign(content, private_key,
+                    hex(random.randint(2 ** (8 * 7), 2 ** (8 * 8) - 1))[2:], 64)
 
 
 class Blockchain(Base):

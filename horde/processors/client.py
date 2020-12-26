@@ -2,6 +2,7 @@ import argparse
 import asyncio
 import os
 import webbrowser
+from json import JSONDecodeError
 from typing import Any, Optional
 
 from aiohttp import web
@@ -22,6 +23,7 @@ class ClientProcessor(NodeProcessor):
     def generate_routes(self):
         self.app.add_routes([
             web.get(r'/api/{peer}/connections', self.query_topology_api),
+            web.post(r'/api/transaction/transfer-money', self.tansfer_money_api),
             web.get(r'/api/{peer}/accounts/', self.query_accounts_api),
             web.get(r'/api/{peer}/blockchains/', self.list_blockchains_api),
             web.get(r'/api/{peer}/blockchains/{blockchain:\d+}', self.query_blockchain_api),
@@ -29,18 +31,17 @@ class ClientProcessor(NodeProcessor):
         ])
 
     async def start(self) -> None:
+        host = '127.0.0.1'
+        port = self.config['port']
         # pylint:disable=protected-access
         await self.task_queue.put(asyncio.create_task(web._run_app(
-            self.app,
-            host=self.full_config['web']['bind_addr'][0],
-            port=self.full_config['web']['bind_addr'][1]
-        )))
+            self.app, host=host, port=port)))
         if self.args.open:
             async def open_webpage(url):
                 await asyncio.sleep(0.2)
                 webbrowser.open(url)
             await self.task_queue.put(asyncio.create_task(open_webpage(
-                'http://%s:%d/index.html' % tuple(self.full_config['web']['public_addr']))))
+                'http://%s:%d/index.html' % (host, port))))
         for peer in self.full_config['peers']:
             peer_host, peer_port = peer['public_addr']
             await self.start_connection(peer_host, peer_port, self.configs[peer['id']])
@@ -205,6 +206,45 @@ class ClientProcessor(NodeProcessor):
             return web.json_response({
                 'result': result,
             })
+        except RpcError as error:
+            return web.json_response({
+                'error': {
+                    'message': str(error),
+                    'data': error.data,
+                },
+            }, status=400)
+
+    async def tansfer_money_api(self, request: web.Request) -> web.Response:
+        try:
+            body = await request.json()
+            endorser = body['endorser']
+            assert isinstance(endorser, str)
+            temp_data = body['data']
+            assert isinstance(temp_data, list)
+            assert temp_data  # at least one item
+            data = []
+            for item in temp_data:
+                amount = item['amount']
+                assert isinstance(amount, (float, int))
+                amount = float(amount)
+                target = item['target']
+                assert isinstance(target, str)
+                data.append({
+                    'amount': amount,
+                    'target': target,
+                })
+        except (JSONDecodeError, KeyError, AssertionError):
+            return web.json_response({
+                'error': {
+                    'message': 'invalid query',
+                },
+            }, status=400)
+        connection = self.find_peer(endorser)
+        if connection is None:
+            return web.json_response({'error': {'message': 'endorser offline'}}, status=400)
+        try:
+            result = await self.request('transfer-money', data, connection)
+            return web.json_response({'result': result})
         except RpcError as error:
             return web.json_response({
                 'error': {
