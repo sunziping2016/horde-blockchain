@@ -33,3 +33,7 @@ clients:
   - id: client4
     type: account
     root: data/client4
+web:
+  bind_addr: [ 127.0.0.1, 16848 ]
+  public_addr: [ 127.0.0.1, 16848 ]
+  static_root: frontend/dist
