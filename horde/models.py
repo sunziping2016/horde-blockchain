@@ -18,7 +18,7 @@ class AccountState(Base):
     account = Column(String, primary_key=True)
     version = Column(Integer, primary_key=True)  # increment from 1
     # should be 0 when version is 1
-    value = Column(Numeric(precision=ACCOUNT_PRECISION), nullable=False)
+    value = Column(Numeric(precision=ACCOUNT_PRECISION, asdecimal=False), nullable=False)
     hash = Column(BLOB(32), nullable=False)  # hash(account, version, value)
 
     @staticmethod
