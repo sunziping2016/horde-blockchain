@@ -160,13 +160,12 @@ class PeerProcessor(NodeProcessor):
         # noinspection PyTypeChecker,PyUnresolvedReferences
         result = list((await self.session.execute(
             select(Blockchain)  # type: ignore
-            .order_by(Blockchain.number if asc else Blockchain.number.desc())
-                .limit(limit + offset)
+                .order_by(Blockchain.number if asc else Blockchain.number.desc())
+                .limit(limit)
+                .offset(offset)
         )).scalars())
-        if len(result) < offset:
-            raise RpcError(None, 'not found')
         # noinspection PyTypeChecker
         return [{
-            'hash': item.hash,
+            'hash': item.hash.hex(),
             'number': item.number
-        } for item in result[offset:]]
+        } for item in result]

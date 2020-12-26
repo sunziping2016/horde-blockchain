@@ -22,6 +22,7 @@ class ClientProcessor(NodeProcessor):
     def generate_routes(self):
         self.app.add_routes([
             web.get(r'/api/{peer}/accounts/', self.query_accounts_api),
+            web.get(r'/api/{peer}/blockchains/', self.list_blockchains_api),
             web.get(r'/api/{peer}/blockchains/{blockchain:\d+}', self.query_blockchain_api),
             web.static(r'/', os.path.join(self.full_config['web']['static_root'])),
         ])
@@ -130,6 +131,52 @@ class ClientProcessor(NodeProcessor):
             query['offset'] = offset
         try:
             result = await self.request('query-accounts', query, connection)
+            return web.json_response({
+                'result': result,
+            })
+        except RpcError as error:
+            return web.json_response({
+                'error': {
+                    'message': str(error),
+                    'data': error.data,
+                },
+            }, status=400)
+
+    async def list_blockchains_api(self, request: web.Request) -> web.Response:
+        try:
+            raw_asc = request.rel_url.query.get('asc')
+            if raw_asc is not None:
+                assert raw_asc in ['true', 'false']
+                asc: Optional[bool] = raw_asc == 'true'
+            else:
+                asc = None
+            peer = request.match_info.get('peer')
+            raw_limit = request.rel_url.query.get('limit')
+            limit = int(raw_limit) if raw_limit is not None else None
+            raw_offset = request.rel_url.query.get('offset')
+            offset = int(raw_offset) if raw_offset is not None else None
+        except (ValueError, AssertionError):
+            return web.json_response({
+                'error': {
+                    'message': 'invalid query parameter',
+                },
+            }, status=400)
+        connection = self.find_peer(peer)
+        if connection is None:
+            return web.json_response({
+                'error': {
+                    'message': 'peer offline',
+                },
+            }, status=400)
+        query: Any = {}
+        if asc is not None:
+            query['asc'] = asc
+        if limit is not None:
+            query['limit'] = limit
+        if offset is not None:
+            query['offset'] = offset
+        try:
+            result = await self.request('list-blockchains', query, connection)
             return web.json_response({
                 'result': result,
             })
