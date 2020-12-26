@@ -158,12 +158,11 @@ class PeerProcessor(NodeProcessor):
             )).scalars())
         if len(result) < offset:
             raise RpcError(None, 'not found')
-        result = result[offset:]
         return [{
             'account': item.account,
             'version': item.version,
             'value': item.value
-        } for item in result]
+        } for item in result[offset:]]
 
     @on_requested('list-blockchains', peer_type='admin')
     @on_requested('list-blockchains', peer_type='client')
@@ -195,9 +194,7 @@ class PeerProcessor(NodeProcessor):
         if len(result) < offset:
             raise RpcError(None, 'not found')
         # noinspection PyTypeChecker
-        return [
-            {
-                'hash': item.hash,
-                'number': item.number
-            } for item in result
-        ]
+        return [{
+            'hash': item.hash,
+            'number': item.number
+        } for item in result[offset:]]
