@@ -164,3 +164,40 @@ class PeerProcessor(NodeProcessor):
             'version': item.version,
             'value': item.value
         } for item in result]
+
+    @on_requested('list-blockchains', peer_type='admin')
+    @on_requested('list-blockchains', peer_type='client')
+    async def list_blockchains_handler(self, data: Any, context: Context) -> Any:
+        try:
+            assert self.session is not None
+            asc = False
+            if 'asc' in data:
+                asc = data['asc']
+                assert isinstance(asc, bool)
+            limit = 15
+            if 'limit' in data:
+                limit = data['limit']
+                assert isinstance(limit, int)
+                assert limit >= 0
+            offset = 0
+            if 'offset' in data:
+                offset = data['offset']
+                assert isinstance(offset, int)
+                assert offset >= 0
+        except (AssertionError, TypeError, KeyError) as error:
+            raise RpcError(None, 'bad request') from error
+        # noinspection PyTypeChecker,PyUnresolvedReferences
+        result = list((await self.session.execute(
+            select(Blockchain)  # type: ignore
+            .order_by(Blockchain.number if asc else Blockchain.number.desc())
+                .limit(limit + offset)
+        )).scalars())
+        if len(result) < offset:
+            raise RpcError(None, 'not found')
+        # noinspection PyTypeChecker
+        return [
+            {
+                'hash': item.hash,
+                'number': item.number
+            } for item in result
+        ]
