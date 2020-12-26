@@ -2,8 +2,7 @@ import argparse
 import os
 from typing import Dict, Any
 
-from horde.processors.router import Router, processor
-
+from horde.processors.router import Router, processor, on_requested, Context
 
 PUB_KET_EXT = '.pub.key'
 
@@ -24,3 +23,7 @@ class NodeProcessor(Router):
             with open(os.path.join(full_config['public_root'], file), 'rb') as f:
                 self.public_keys[file[:-len(PUB_KET_EXT)]] = f.read()
         self.public_key = self.public_keys[self.config['id']]
+
+    @on_requested('who-are-you')
+    async def who_are_you_handler(self, data: Any, context: Context) -> Any:
+        return self.config['id']

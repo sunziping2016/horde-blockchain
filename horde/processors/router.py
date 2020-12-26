@@ -5,7 +5,6 @@ import json
 import logging
 import random
 import string
-import sys
 import traceback
 from asyncio import IncompleteReadError, Future, FIRST_COMPLETED
 from dataclasses import dataclass
@@ -33,8 +32,8 @@ class Box(Generic[T]):
 class RpcError(Exception):
     data: Any
 
-    def __init__(self, data, *args, **kwargs):
-        super().__init__(args, kwargs)
+    def __init__(self, data: Any, *args, **kwargs):
+        super().__init__(*args)
         self.data = data
 
 
@@ -273,8 +272,8 @@ class Router:
                         headers[header[:separator_index].lower()] = \
                             header[separator_index + 1:].strip()
                 if 'content-length' not in headers:
-                    print('%s: missing content length' % id_, file=sys.stderr)
-                    raise MissingContentLength
+                    logging.info('%s: missing content length', id_)
+                    return None
                 content_length = int(headers['content-length'])
                 raw_content = (await reader.read(content_length)).decode()
                 return json.loads(raw_content)
