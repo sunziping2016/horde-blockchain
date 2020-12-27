@@ -27,10 +27,12 @@ class ClientProcessor(NodeProcessor):
 
     def generate_routes(self):
         self.app.add_routes([
+            web.get(r'/api/ws', self.websocket_handler),
             web.post(r'/api/transaction/transfer-money', self.transfer_money_api),
             web.post(r'/api/transaction/submit', self.submit_transactions_api),
-            web.get(r'/api/ws', self.websocket_handler),
-            web.get(r'/api/{peer}/accounts/', self.query_accounts_api),
+            web.get(r'/api/connections', self.global_topology_api),
+            web.get(r'/api/{peer}/connections', self.query_topology_api),
+            web.get(r'/api/{peer}/accounts', self.query_accounts_api),
             web.get(r'/api/{peer}/blockchains/', self.list_blockchains_api),
             web.get(r'/api/{peer}/blockchains/{blockchain:\d+}', self.query_blockchain_api),
             web.static(r'/', os.path.join(self.full_config['web']['static_root'])),
@@ -106,10 +108,36 @@ class ClientProcessor(NodeProcessor):
                 break
         return connection
 
-    async def query_blockchain_api(self, request: web.Request) -> web.Response:
+    async def global_topology_api(self, request: web.Request) -> web.Response:
+        connections = []
+        ids = []
+        for connection, config in self.connection_to_config.items():
+            if config is not None:
+                connections.append(connection)
+                ids.append(config['id'])
+        requests = []
+        for connection in connections:
+            new_request = self.request('query-topology', None, connection)
+            requests.append(new_request)
         try:
-            peer = request.match_info.get('peer')
-            assert peer is not None
+            results = await asyncio.gather(*requests)
+            return web.json_response({
+                'result': [{
+                    ids[index]: result
+                } for index, result in enumerate(results)]
+            })
+        except RpcError as error:
+            return web.json_response({
+                'error': {
+                    'message': str(error),
+                    'data': error.data,
+                },
+            }, status=400)
+
+    async def query_blockchain_api(self, request: web.Request) -> web.Response:
+        peer = request.match_info.get('peer')
+        assert peer is not None
+        try:
             raw_blockchain = request.match_info.get('blockchain')
             assert raw_blockchain is not None
             blockchain = int(raw_blockchain)
@@ -130,6 +158,30 @@ class ClientProcessor(NodeProcessor):
             result = await self.request('query-blockchain', {
                 'blockchain_number': blockchain,
             }, connection)
+            return web.json_response({
+                'result': result,
+            })
+        except RpcError as error:
+            return web.json_response({
+                'error': {
+                    'message': str(error),
+                    'data': error.data,
+                },
+            }, status=400)
+
+    async def query_topology_api(self, request: web.Request) -> web.Response:
+        peer = request.match_info.get('peer')
+        assert peer is not None
+        connection: Optional[str] = None
+        connection = self.find_peer(peer)
+        if connection is None:
+            return web.json_response({
+                'error': {
+                    'message': 'peer offline',
+                },
+            }, status=400)
+        try:
+            result = await self.request('query-topology', None, connection)
             return web.json_response({
                 'result': result,
             })
