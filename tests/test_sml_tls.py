@@ -20,10 +20,13 @@ class SMTLSTestCase(unittest.TestCase):
         self.key_pair3 = generate_keypair()
 
     @staticmethod
-    async def echo_server(reader: SMTLSStreamReader, writer: SMTLSStreamWriter) -> None:
-        part_a = await reader.read(21)
-        part_b = await reader.readuntil(b'\n')
-        content = part_a + part_b
+    async def echo_server(reader: SMTLSStreamReader, writer: SMTLSStreamWriter, peer_id) -> None:
+        part_a = await reader.readexactly(21)
+        part_b = await reader.readexactly(41)
+        part_c = await reader.readuntil(b'0')
+        part_d = await reader.readexactly(10)
+        part_e = await reader.readuntil(b'\n')
+        content = part_a + part_b + part_c + part_d + part_e
         writer.write(content)
         await writer.drain()
         writer.close()
@@ -31,10 +34,10 @@ class SMTLSTestCase(unittest.TestCase):
 
     @staticmethod
     async def echo_client(reader: SMTLSStreamReader, writer: SMTLSStreamWriter) -> bool:
-        content = (string.ascii_lowercase + string.digits + '\n').encode()
+        content = (string.ascii_lowercase + string.digits * 100 + '\n').encode()
         writer.write(content)
         await writer.drain()
-        part_a = await reader.read(11)  # change this number should always be ok
+        part_a = await reader.readexactly(11)  # change this number should always be ok
         part_b = await reader.readuntil(b'\n')
         content2 = part_a + part_b
         writer.close()
@@ -59,7 +62,6 @@ class SMTLSTestCase(unittest.TestCase):
         result = asyncio.run(test())
         self.assertTrue(result)
 
-    @unittest.skip("waiting to be implemented")
     def test_tls_fail_on_wrong_client_key(self) -> None:
         """When client offers wrong key, server should reject it"""
         client_id = 'hello'
@@ -77,7 +79,6 @@ class SMTLSTestCase(unittest.TestCase):
                 return await SMTLSTestCase.echo_client(reader, writer)
         self.assertRaises(HandshakeError, lambda: asyncio.run(test()))
 
-    @unittest.skip("waiting to be implemented")
     def test_tls_fail_on_wrong_server_key(self) -> None:
         """When server offers wrong key, client should reject it"""
         client_id = 'hello'
@@ -95,7 +96,6 @@ class SMTLSTestCase(unittest.TestCase):
                 return  await SMTLSTestCase.echo_client(reader, writer)
         self.assertRaises(HandshakeError, lambda: asyncio.run(test()))
 
-    @unittest.skip("waiting to be implemented")
     def test_tls_fail_on_client_not_exist(self) -> None:
         """When client does not exit, server should reject it"""
         async def test() -> bool:
