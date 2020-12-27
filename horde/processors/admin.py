@@ -21,8 +21,9 @@ class AdminProcessor(ClientProcessor):
             endorser = data['endorser']
             assert isinstance(endorser, str)
             amount = data['amount']
-            assert isinstance(amount, float)
-        except (JSONDecodeError, KeyError, ValueError):
+            assert isinstance(amount, (int, float))
+            amount = float(amount)
+        except (JSONDecodeError, AssertionError, KeyError, ValueError):
             return web.json_response({
                 'error': {
                     'message': 'invalid query',

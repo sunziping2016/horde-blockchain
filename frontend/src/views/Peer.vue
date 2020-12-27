@@ -1,3 +1,4 @@
+<script src="../router/index.js"></script>
 <template>
   <div class="peer-page">
     <v-breadcrumbs
@@ -5,7 +6,7 @@
           text: '首页',
           to: '/'
         }, {
-          text: this_id,
+          text: `节点 ${this_id}`,
           to: `/peer/${this_id}`
         }]"
     />
@@ -72,7 +73,6 @@
       </v-card-title>
       <v-card-text>
         <v-data-table
-            item-key="name"
             :loading="account_loading"
             :items-per-page.sync="account_items_per_page"
             :page.sync="account_page"
@@ -83,6 +83,51 @@
               'items-per-page-options': [5, 10, 15, 20, 25]
             }"
         ></v-data-table>
+      </v-card-text>
+    </v-card>
+    <v-card>
+      <v-card-title>
+        <span>区块信息</span>
+        <v-spacer />
+        <v-btn
+            icon
+            color="primary"
+            @click="fetch_blockchains"
+        >
+          <v-icon>mdi-refresh</v-icon>
+        </v-btn>
+      </v-card-title>
+      <v-card-text>
+        <v-data-table
+            :loading="blockchains_loading"
+            :items-per-page.sync="blockchains_items_per_page"
+            :page.sync="blockchains_page"
+            :headers="blockchains_headers"
+            :items="blockchains_data"
+            :server-items-length="blockchains_total"
+            :footer-props="{
+              'items-per-page-options': [5, 10, 15, 20, 25]
+            }"
+        >
+          <template #item.number="{ item }">
+            <router-link
+                :to="`/peer/${this_id}/blockchain/${item.number}`"
+                tag="span" style="cursor: pointer"
+            >
+              {{ item.number }}
+            </router-link>
+          </template>
+          <template #item.hash="{ item }">
+            <router-link
+                :to="`/peer/${this_id}/blockchain/${item.number}`"
+                tag="span" style="cursor: pointer"
+            >
+              <code style="background-color: transparent">
+                {{item.hash}}
+              </code>
+            </router-link>
+          </template>
+        </v-data-table>
       </v-card-text>
     </v-card>
   </div>
@@ -105,6 +150,15 @@ export default {
     ],
     account_data: [],
     account_total: 0,
+    blockchains_loading: true,
+    blockchains_items_per_page: 5,
+    blockchains_page: 1,
+    blockchains_headers: [
+      {text: '序号', value: 'number', sortable: false},
+      {text: '散列值', value: 'hash', sortable: false},
+    ],
+    blockchains_data: [],
+    blockchains_total: 0,
   }),
   computed: {
     ...mapState(['peers']),
@@ -132,9 +186,11 @@ export default {
     account_latest: 'fetch_accounts',
     account_items_per_page: 'fetch_accounts',
     account_page: 'fetch_accounts',
+    blockchains_items_per_page: 'fetch_accounts',
+    blockchains_page: 'fetch_accounts',
   },
   methods: {
-    fetch_accounts () {
+    fetch_accounts() {
       this.account_loading = true
       axios.get(`/${this.this_id}/accounts`, {
         params: {
@@ -149,10 +205,25 @@ export default {
           this.account_total = result.data.result.total
           this.account_loading = false
         })
+    },
+    fetch_blockchains() {
+      this.blockchains_loading = true
+      axios.get(`/${this.this_id}/blockchains`, {
+        params: {
+          'offset': this.blockchains_items_per_page * (this.blockchains_page - 1),
+          'limit': this.blockchains_items_per_page,
+        }
+      })
+          .then(result => {
+            this.blockchains_data = result.data.result.data
+            this.blockchains_total = result.data.result.total
+            this.blockchains_loading = false
+          })
     }
   },
   mounted() {
     this.fetch_accounts()
+    this.fetch_blockchains()
   }
 }
 </script>
