@@ -8,14 +8,29 @@
     />
     <v-card>
       <v-card-title>节点拓扑结构</v-card-title>
-      <v-card-text>
-        <!-- TODO: add visualize graph -->
+      <v-card-text >
+          <div style="display:flex; flex-direction: column; align-items:center">
+            <svg id="node-topo-svg" :width="width" :height="height">
+              <g>
+                <router-link v-for="node in Object.values(nodes_layout)" :to="`/peer/${node.id}`" :key="node.id">
+                  <foreignObject :x=node.x-node_r :y=node.y-node_r :width=node_r*2 :height=node_r*2>
+                    <i v-if="node.config.type === 'orderer'" data-v-fae5bece="" aria-hidden="true" class="v-icon notranslate mdi mdi-web theme--light" v-on:mouseenter="node_onmouseenter(node.id)" v-on:mouseleave="node_onmouseleave(node.id)"></i>
+                    <i v-else data-v-fae5bece="" aria-hidden="true" class="v-icon notranslate mdi mdi-book theme--light"  v-on:mouseenter="node_onmouseenter(node.id)" v-on:mouseleave="node_onmouseleave(node.id)"></i>
+                  </foreignObject>
+                </router-link>
+              </g>
+              <g>
+                <path v-for="edge in edges_layout" :key="edge.source+','+edge.target" class="svg-edge" :d="one_edge(edge.points)"></path>
+              </g>
+            </svg>
+          </div>
         <v-list>
           <v-list-item
               v-for="(value, name) in peers"
               :key="name"
               two-line
               :to="`/peer/${name}`"
+              :ref="name+'-list'"
           >
             <v-list-item-icon>
               <v-icon v-if="value.config.type === 'orderer'">
@@ -46,12 +61,145 @@
 </template>
 
 <script>
-import { mapState } from 'vuex'
+import { mapState } from 'vuex';
+import dagre from 'dagre';
 
 export default {
   name: 'Home',
   computed: {
     ...mapState(['peers'])
+  },
+  data() {
+    return {
+      node_r: 12,
+      dagre_config: {
+        rankdir: "LR",
+        nodesep:5,
+        ranksep:90,
+        acyclicer: "greedy",
+        ranker: "tight-tree",
+        edgesep: 30
+      },
+      nodes_layout: [],
+      edges_layout: [],
+      width:0,
+      height:0
+    }
+  },
+  methods: {
+    one_edge : function (points) {
+        // const movePoint = (p, x, y, s) => {
+        //     return { x: p.x * s + x, y: p.y * s + y }
+        // };
+        // points = points.map(p => movePoint(p, transX, transY, scale))
+
+
+        let len = points.length;
+        if (len === 0) { return "" }
+        let start = `M ${points[0].x} ${points[0].y}`,
+            vias = [];
+
+        const getInter = (p1, p2, n) => {
+            return `${p1.x * n + p2.x * (1 - n)} ${p1.y * n + p2.y * (1 - n)}`
+        };
+
+        const getCurve = (points) => {
+            let vias = [],
+                len = points.length;
+            const ratio = 0.5;
+            for (let i = 0; i < len - 2; i++) {
+                let p1, p2, p3, p4, p5;
+                if (i === 0) {
+                    p1 = `${points[i].x} ${points[i].y}`
+                } else {
+                    p1 = getInter(points[i], points[i + 1], ratio)
+                }
+                p2 = getInter(points[i], points[i + 1], 1 - ratio);
+                p3 = `${points[i + 1].x} ${points[i + 1].y}`;
+                p4 = getInter(points[i + 1], points[i + 2], ratio);
+                if (i === len - 3) {
+                    p5 = `${points[i + 2].x} ${points[i + 2].y}`
+                } else {
+                    p5 = getInter(points[i + 1], points[i + 2], 1 - ratio)
+                }
+                let cPath = `M ${p1} L${p2} Q${p3} ${p4} L${p5}`;
+                vias.push(cPath);
+            }
+            return vias
+        };
+        vias = getCurve(points);
+        let pathData = `${start}  ${vias.join(' ')}`;
+        return pathData;
+    },
+    node_onmouseenter: function (nodeid) {
+      console.log("mouseenter");
+        let that = this;
+        that.$refs[nodeid+"-list"][0].$el.focus();
+    },
+    node_onmouseleave: function (nodeid) {
+      console.log("mouseleave");
+        let that = this;
+        that.$refs[nodeid+"-list"][0].$el.blur();
+    },
+  },
+  mounted() {
+    let that = this;
+    // init dagre layout
+    let dagre_graph = new dagre.graphlib.Graph();
+    dagre_graph.setGraph(that.dagre_config);
+    dagre_graph.setDefaultEdgeLabel(function() { return {}; });
+
+    // set nodes:
+    for(let peer of Object.values(that.peers)) {
+      let npeer = JSON.parse(JSON.stringify(peer));
+      npeer.height = npeer.width = that.node_r*2;
+      npeer.id = npeer.config.id;
+      dagre_graph.setNode(npeer.id, npeer);
+      that.nodes_layout.push(npeer);
+    }
+
+    // set edges:
+    for(let node of that.nodes_layout) {
+      for(let target of node.connections) {
+        dagre_graph.setEdge(node.id, target);
+        that.edges_layout.push([node.id, target]);
+      }
+    }
+    // layout
+    dagre.layout(dagre_graph);
+
+    let min_x = Number.MAX_SAFE_INTEGER;
+    let min_y = Number.MAX_SAFE_INTEGER;
+    let max_x = Number.MIN_SAFE_INTEGER;
+    let max_y = Number.MIN_SAFE_INTEGER;
+    that.nodes_layout = {};
+    dagre_graph.nodes().forEach(n => {
+      let nnode = dagre_graph.node(n);
+      that.nodes_layout[n] = nnode;
+      min_x = Math.min(min_x, nnode.x);
+      min_y = Math.min(min_y, nnode.y);
+      max_x = Math.max(max_x, nnode.x);
+      max_y = Math.max(max_y, nnode.y);
+    });
+
+    that.edges_layout = [];
+    dagre_graph.edges().forEach(e => {
+      let nedge = dagre_graph.edge(e);
+      let edge_points = nedge.points;
+      nedge.source = e.v;
+      nedge.target = e.w;
+      that.edges_layout.push(nedge);
+      for(let point of edge_points){
+        min_x = Math.min(min_x, point.x);
+        min_y = Math.min(min_y, point.y);
+        max_x = Math.max(max_x, point.x);
+        max_y = Math.max(max_y, point.y);
+      }
+      that.width = max_x-min_x+that.node_r*4;
+      that.height = max_y-min_y+that.node_r*4;
+    });
+
+
   }
 }
 </script>
@@ -69,4 +217,18 @@ export default {
     margin-top: 32px;
   }
 }
+</style>
+
+<style lang="scss">
+  .svg-node {
+    stroke: gainsboro;
+    stroke-width: 0.5;
+    fill: gainsboro;
+  };
+  .svg-edge {
+    stroke: rgb(127, 127, 127);
+    opacity: 1;
+    stroke-width: 1;
+    fill: None;
+  }
 </style>
