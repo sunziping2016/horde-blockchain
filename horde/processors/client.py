@@ -51,8 +51,6 @@ class ClientProcessor(NodeProcessor):
                 return None, err
         outgoing_task = asyncio.create_task(self.websocket_outgoing_queue.get())
         incoming_task = asyncio.create_task(retrieve_websocket())
-
-        await socket.send_str(json.dumps("hello"))
         while True:
             done, _ = await asyncio.wait({outgoing_task, incoming_task},
                                          return_when=asyncio.FIRST_COMPLETED)
@@ -82,6 +80,14 @@ class ClientProcessor(NodeProcessor):
     async def new_blockchain_handler(self, data: Any, context: Context) -> None:
         await self.websocket_outgoing_queue.put({
             'type': 'new-blockchain',
+            'data': data,
+        })
+
+    @on_notified('new-blockchain-verified', peer_type='orderer')
+    @on_notified('new-blockchain-verified', peer_type='endorser')
+    async def new_blockchain_verified_handler(self, data: Any, context: Context) -> None:
+        await self.websocket_outgoing_queue.put({
+            'type': 'new-blockchain-verified',
             'data': data,
         })
 
