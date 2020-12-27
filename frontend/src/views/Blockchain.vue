@@ -98,6 +98,8 @@
               </v-list-item>
               <v-list-group
                   :value="true"
+                  no-action
+                  sub-group
               >
                 <template v-slot:activator>
                   <v-list-item-content>
@@ -109,7 +111,7 @@
                     :key="mutation.hash"
                 >
                   <v-divider v-if="index !== 0"></v-divider>
-                  <v-subheader>更改 {{index + 1}}</v-subheader>
+                  <v-subheader class="ml-6">更改 {{index + 1}}</v-subheader>
                   <v-list-item two-line>
                     <v-list-item-content>
                       <v-list-item-title>账户</v-list-item-title>

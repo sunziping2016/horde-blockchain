@@ -78,17 +78,27 @@ class ClientProcessor(NodeProcessor):
 
     @on_notified('new-blockchain', peer_type='orderer')
     async def new_blockchain_handler(self, data: Any, context: Context) -> None:
+        peer_config = context.peer_config()
+        assert peer_config is not None
         await self.websocket_outgoing_queue.put({
             'type': 'new-blockchain',
-            'data': data,
+            'data': {
+                'orderer': peer_config['id'],
+                'blockchain': data
+            },
         })
 
     @on_notified('new-blockchain-verified', peer_type='orderer')
     @on_notified('new-blockchain-verified', peer_type='endorser')
     async def new_blockchain_verified_handler(self, data: Any, context: Context) -> None:
+        peer_config = context.peer_config()
+        assert peer_config is not None
         await self.websocket_outgoing_queue.put({
             'type': 'new-blockchain-verified',
-            'data': data,
+            'data': {
+                'peer': peer_config['id'],
+                **data
+            },
         })
 
     async def start(self) -> None:

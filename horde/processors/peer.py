@@ -22,7 +22,7 @@ class BlockchainRejected(Exception):
 class PeerProcessor(NodeProcessor):
     engine: AsyncEngine
     session: Optional[AsyncSession]
-    blockchains: Dict[bytes, Tuple[Any, int]]
+    blockchains: Dict[bytes, Tuple[Optional[Any], int]]
 
     def __init__(self, config: Any, full_config: Any, args: argparse.Namespace):
         super().__init__(config, full_config, args)
@@ -85,20 +85,25 @@ class PeerProcessor(NodeProcessor):
     @on_notified('new-blockchain-verified', peer_type='endorser')
     async def new_blockchain_verified_handler(self, data: Any, context: Context) -> None:
         blockchain_hash = bytes.fromhex(data['hash'])
-        if data['verified'] and blockchain_hash in self.blockchains:
+        if data['verified']:
+            if blockchain_hash not in self.blockchains:
+                self.blockchains[blockchain_hash] = None, 0
             old_tuple = self.blockchains[blockchain_hash]
-            if old_tuple[1] + 1 >= self.verify_num:
+            new_tuple = old_tuple[0], old_tuple[1] + 1
+            self.blockchains[blockchain_hash] = new_tuple
+            if new_tuple[0] is not None and new_tuple[1] >= self.verify_num:
                 del self.blockchains[blockchain_hash]
-                await self.save_blockchain(old_tuple[0])
-            else:
-                new_tuple = old_tuple[0], old_tuple[1] + 1
-                self.blockchains[blockchain_hash] = new_tuple
+                await self.save_blockchain(new_tuple[0])
 
     async def verify_blockchain(self, blockchain: Any) -> None:
         assert self.session is not None
         verified: Optional[bool] = None
         try:
-            self.blockchains[blockchain['hash']] = blockchain, 0
+            if blockchain['hash'] in self.blockchains:
+                old_tuple = self.blockchains[blockchain['hash']]
+                self.blockchains[blockchain['hash']] = blockchain, old_tuple[1]
+            else:
+                self.blockchains[blockchain['hash']] = blockchain, 0
             subquery1 = select(func.max(Blockchain.number).label('latest_number')).alias('latest')
             # noinspection PyTypeChecker
             results1 = list((await self.session.execute(
@@ -144,6 +149,11 @@ class PeerProcessor(NodeProcessor):
             verified = False
         finally:
             assert verified is not None
+            if blockchain['hash'] in self.blockchains:
+                new_tuple = self.blockchains[blockchain['hash']]
+                if new_tuple[0] is not None and new_tuple[1] >= self.verify_num:
+                    del self.blockchains[blockchain['hash']]
+                    await self.save_blockchain(new_tuple[0])
             await asyncio.gather(*[
                 self.notify('new-blockchain-verified', {
                     'hash': blockchain['hash'].hex(),

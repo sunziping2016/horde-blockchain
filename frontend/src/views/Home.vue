@@ -1,3 +1,4 @@
+<script src="../store/index.js"></script>
 <template>
   <div class="home-page">
     <v-breadcrumbs
@@ -100,6 +101,11 @@
               class="mr-4"
               hide-details
           ></v-select>
+          <v-btn text :disabled="transaction_selected.length === 0"
+                 @click="remove_selected_transactions">
+            <v-icon>mdi-delete</v-icon>
+            删除选中的交易
+          </v-btn>
           <v-btn
               color="primary"
               :loading="transaction_loading"
@@ -156,7 +162,16 @@
         <v-data-table
             :headers="transfer_money_headers"
             :items="transfer_money_items"
-        ></v-data-table>
+        >
+          <template v-slot:item.actions="{ item }">
+            <v-icon
+                small
+                @click="delete_transfer_money_item(item)"
+            >
+              mdi-delete
+            </v-icon>
+          </template>
+        </v-data-table>
         <div class="d-flex align-end">
           <v-text-field
               v-model="transfer_money_item_target"
@@ -246,6 +261,7 @@ export default {
     transfer_money_headers: [
       {text: '转帐对象', value: 'target'},
       {text: '转帐金额', value: 'amount'},
+      {text: '动作', value: 'actions', sortable: false},
     ],
     transfer_money_item_target: '',
     transfer_money_item_amount: '',
@@ -442,6 +458,9 @@ export default {
           })
           .finally(() => this.transfer_money_loading = false)
     },
+    remove_selected_transactions() {
+      this.$store.commit('remove_transactions', this.transaction_selected.map(x => x.id))
+    },
     submit_transaction() {
       if (!this.transaction_valid)
         return
@@ -455,7 +474,10 @@ export default {
         }, error => {
           this.transaction_alert = error.response.data.error.message
         })
-        .finally(() => this.transaction_loading = false)
+        .finally(() => {
+          this.transaction_loading = false
+          this.transaction_selected = []
+        })
     },
     add_transfer_money_item() {
       if (!this.transfer_money_item_valid)
@@ -464,6 +486,14 @@ export default {
         target: this.transfer_money_item_target,
         amount: parseFloat(this.transfer_money_item_amount).toFixed(3),
       })
+    },
+    delete_transfer_money_item(item) {
+      const index = this.transfer_money_items.findIndex(x =>
+        x.target === item.target && x.amount === item.amount
+      )
+      if (index !== -1) {
+        this.transfer_money_items.splice(index, 1)
+      }
     }
   }
 }
