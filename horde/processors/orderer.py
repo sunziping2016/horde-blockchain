@@ -52,7 +52,7 @@ class OrdererProcessor(PeerProcessor):
             'number': number,
             'transactions': transactions
         }
-        # await self.save_blockchain(blockchain)
+        await self.save_blockchain(blockchain)
         await asyncio.gather(*[
             self.notify('new-blockchain', self.serialize_blockchain(blockchain),
                         connection)
