@@ -130,7 +130,7 @@ class ClientProcessor(NodeProcessor):
         try:
             results = await asyncio.gather(*requests)
             return web.json_response({
-                ids[index]: result for index, result in enumerate(results)
+                'result': {ids[index]: result for index, result in enumerate(results)}
             })
         except RpcError as error:
             return web.json_response({
