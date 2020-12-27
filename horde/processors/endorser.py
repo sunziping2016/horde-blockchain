@@ -30,12 +30,18 @@ class EndorserProcessor(PeerProcessor):
         account_mutation = {
             'hash': account_mutation_hash.hex(),
             'account': account.account,
-            'prev_version': account.version,
-            'next_version': account_next_version,
-            'next_value': account_next_value,
-            'next_account_hash': account_next_account_hash.hex()
+            'prev_account_state': {
+                'hash': account.hash.hex(),
+                'version': account.version,
+                'value': account.value,
+            },
+            'next_account_state': {
+                'hash': account_next_account_hash.hex(),
+                'version': account_next_version,
+                'value': account_next_value,
+            },
         }
-        return account_next_account_hash, account_mutation
+        return account_mutation_hash, account_mutation
 
     @on_requested('make-money', peer_type='admin')
     async def make_money_handler(self, data: Any, context: Context) -> Any:

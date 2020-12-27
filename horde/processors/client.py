@@ -1,33 +1,85 @@
 import argparse
 import asyncio
+import json
+import logging
 import os
 import webbrowser
 from json import JSONDecodeError
-from typing import Any, Optional
+from typing import Any, Optional, Tuple
 
+import aiohttp
 from aiohttp import web
 
 from horde.processors.node import NodeProcessor
-from horde.processors.router import processor, RpcError
+from horde.processors.router import processor, RpcError, on_notified, Context
 
 
 @processor
 class ClientProcessor(NodeProcessor):
     app: web.Application
+    websocket_outgoing_queue: asyncio.Queue
 
     def __init__(self, config: Any, full_config: Any, args: argparse.Namespace):
         super().__init__(config, full_config, args)
         self.app = web.Application()
+        self.websocket_outgoing_queue = asyncio.Queue()
         self.generate_routes()
 
     def generate_routes(self):
         self.app.add_routes([
-            web.post(r'/api/transaction/transfer-money', self.tansfer_money_api),
+            web.post(r'/api/transaction/transfer-money', self.transfer_money_api),
+            web.post(r'/api/transaction/submit', self.submit_transactions_api),
+            web.get(r'/api/ws', self.websocket_handler),
             web.get(r'/api/{peer}/accounts/', self.query_accounts_api),
             web.get(r'/api/{peer}/blockchains/', self.list_blockchains_api),
             web.get(r'/api/{peer}/blockchains/{blockchain:\d+}', self.query_blockchain_api),
             web.static(r'/', os.path.join(self.full_config['web']['static_root'])),
         ])
+
+    async def websocket_handler(self, request: web.Request) -> web.WebSocketResponse:
+        socket = web.WebSocketResponse()
+        await socket.prepare(request)
+
+        async def retrieve_websocket():
+            try:
+                return await socket.__anext__(), None
+            except StopAsyncIteration as err:
+                return None, err
+        outgoing_task = asyncio.create_task(self.websocket_outgoing_queue.get())
+        incoming_task = asyncio.create_task(retrieve_websocket())
+
+        await socket.send_str(json.dumps("hello"))
+        while True:
+            done, _ = await asyncio.wait({outgoing_task, incoming_task},
+                                         return_when=asyncio.FIRST_COMPLETED)
+            if incoming_task in done:
+                result: Tuple[Optional[aiohttp.WSMessage], Optional[Exception]] = \
+                    await incoming_task
+                if result[1] is not None:
+                    break
+                msg = result[0]
+                assert msg is not None
+                if msg.type == aiohttp.WSMsgType.TEXT:
+                    if msg.data == 'close':
+                        await socket.close()
+                        break
+                elif msg.type == aiohttp.WSMsgType.ERROR:
+                    logging.debug('%s: ws connection closed with exception %s',
+                                  self.config['id'], socket.exception())
+                incoming_task = asyncio.create_task(retrieve_websocket())
+            if outgoing_task in done:
+                data = await outgoing_task
+                await socket.send_str(json.dumps(data))
+                outgoing_task = asyncio.create_task(self.websocket_outgoing_queue.get())
+        logging.debug('%s: websocket connection closed', self.config['id'])
+        return socket
+
+    @on_notified('new-blockchain', peer_type='orderer')
+    async def new_blockchain_handler(self, data: Any, context: Context) -> None:
+        await self.websocket_outgoing_queue.put({
+            'type': 'new-blockchain',
+            'data': data,
+        })
 
     async def start(self) -> None:
         host = '127.0.0.1'
@@ -189,36 +241,41 @@ class ClientProcessor(NodeProcessor):
                 },
             }, status=400)
 
-    async def tansfer_money_api(self, request: web.Request) -> web.Response:
+    async def transfer_money_api(self, request: web.Request) -> web.Response:
         try:
             body = await request.json()
             endorser = body['endorser']
             assert isinstance(endorser, str)
-            temp_data = body['data']
-            assert isinstance(temp_data, list)
-            assert temp_data  # at least one item
-            data = []
-            for item in temp_data:
-                amount = item['amount']
-                assert isinstance(amount, (float, int))
-                amount = float(amount)
-                target = item['target']
-                assert isinstance(target, str)
-                data.append({
-                    'amount': amount,
-                    'target': target,
-                })
-        except (JSONDecodeError, KeyError, AssertionError):
-            return web.json_response({
-                'error': {
-                    'message': 'invalid query',
-                },
-            }, status=400)
+            data = body['data']
+        except (JSONDecodeError, KeyError, AssertionError, TypeError):
+            return web.json_response({'error': {'message': 'invalid query'}}, status=400)
         connection = self.find_peer(endorser)
         if connection is None:
             return web.json_response({'error': {'message': 'endorser offline'}}, status=400)
         try:
             result = await self.request('transfer-money', data, connection)
+            return web.json_response({'result': result})
+        except RpcError as error:
+            return web.json_response({
+                'error': {
+                    'message': str(error),
+                    'data': error.data,
+                },
+            }, status=400)
+
+    async def submit_transactions_api(self, request: web.Request) -> web.Response:
+        try:
+            body = await request.json()
+            orderer = body['orderer']
+            assert isinstance(orderer, str)
+            data = body['data']
+        except (JSONDecodeError, KeyError, AssertionError, TypeError):
+            return web.json_response({'error': {'message': 'invalid query'}}, status=400)
+        connection = self.find_peer(orderer)
+        if connection is None:
+            return web.json_response({'error': {'message': 'orderer offline'}}, status=400)
+        try:
+            result = await self.request('submit-transactions', data, connection)
             return web.json_response({'result': result})
         except RpcError as error:
             return web.json_response({

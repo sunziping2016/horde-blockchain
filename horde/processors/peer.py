@@ -58,32 +58,7 @@ class PeerProcessor(NodeProcessor):
         if len(result) == 0:
             raise RpcError(None, 'not found')
         item: Blockchain = result[0]
-        # noinspection PyTypeChecker
-        return {
-            'hash': item.hash.hex(),
-            'prev_hash': item.prev_hash.hex(),
-            'timestamp': item.timestamp.isoformat(),
-            'number': item.number,
-            'transactions': [{
-                'hash': transaction.hash.hex(),
-                'endorser': transaction.endorser,
-                'signature': transaction.signature.hex(),
-                'mutations': [{
-                    'hash': mutation.hash.hex(),
-                    'account': mutation.account,
-                    'prev_account_state': {
-                        'hash': mutation.prev_account_state.hash.hex(),
-                        'version': mutation.prev_account_state.version,
-                        'value': mutation.prev_account_state.value,
-                    },
-                    'next_account_state': {
-                        'hash': mutation.next_account_state.hash.hex(),
-                        'version': mutation.next_account_state.version,
-                        'value': mutation.next_account_state.value,
-                    },
-                } for mutation in transaction.mutations]
-            } for transaction in item.transactions]  # type: ignore
-        }
+        return item.serialize()
 
     @on_requested('query-accounts', peer_type='admin')
     @on_requested('query-accounts', peer_type='client')

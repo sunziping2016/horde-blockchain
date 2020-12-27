@@ -1,8 +1,8 @@
 import random
 from datetime import datetime
-from typing import List
+from typing import List, Any
 
-from pysmx.SM2 import Sign  # type: ignore
+from pysmx.SM2 import Sign, Verify  # type: ignore
 from pysmx.SM3 import digest  # type: ignore
 from sqlalchemy import Column, Integer, String, Numeric, BLOB, Sequence, ForeignKey, TIMESTAMP
 from sqlalchemy.ext.declarative import declarative_base
@@ -51,6 +51,22 @@ class TransactionMutation(Base):
     def compute_hash(prev_hash: bytes, next_hash: bytes) -> bytes:
         return digest(prev_hash + next_hash)
 
+    def serialize(self) -> Any:
+        return {
+            'hash': self.hash.hex(),
+            'account': self.account,
+            'prev_account_state': {
+                'hash': self.prev_account_state.hash.hex(),
+                'version': self.prev_account_state.version,
+                'value': self.prev_account_state.value,
+            },
+            'next_account_state': {
+                'hash': self.next_account_state.hash.hex(),
+                'version': self.next_account_state.version,
+                'value': self.next_account_state.value,
+            },
+        }
+
 
 class Transaction(Base):
     __tablename__ = 'transactions'
@@ -79,6 +95,22 @@ class Transaction(Base):
         return Sign(content, private_key,
                     hex(random.randint(2 ** (8 * 7), 2 ** (8 * 8) - 1))[2:], 64)
 
+    @staticmethod
+    def verify_signature(signature: bytes, public_key: bytes, endorser: str,
+                         timestamp: datetime, mutations: List[bytes]):
+        content = b'%r,%s,' % (endorser, timestamp.isoformat().encode()) + b''.join(mutations)
+        return Verify(signature, content, public_key, 64)
+
+    def serialize(self) -> Any:
+        # noinspection PyTypeChecker
+        return {
+            'hash': self.hash.hex(),
+            'endorser': self.endorser,
+            'signature': self.signature.hex(),
+            'timestamp': self.timestamp.isoformat(),
+            'mutations': [mutation.serialize() for mutation in self.mutations]  # type: ignore
+        }
+
 
 class Blockchain(Base):
     __tablename__ = 'blockchains'
@@ -93,6 +125,17 @@ class Blockchain(Base):
 
     @staticmethod
     def compute_hash(prev_hash: bytes, timestamp: datetime, number: int,
-                     transactions: List[Transaction]) -> bytes:
+                     transactions: List[bytes]) -> bytes:
         return digest(prev_hash + b',%s,%d,' % (timestamp.isoformat().encode(), number) +
-                      b''.join([transaction.hash for transaction in transactions]))
+                      b''.join(transactions))
+
+    def serialize(self) -> Any:
+        # noinspection PyTypeChecker
+        return {
+            'hash': self.hash.hex(),
+            'prev_hash': self.prev_hash.hex(),
+            'timestamp': self.timestamp.isoformat(),
+            'number': self.number,
+            'transactions': [transaction.serialize()
+                             for transaction in self.transactions]  # type: ignore
+        }

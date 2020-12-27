@@ -1,0 +1,39 @@
+<!doctype html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>WebSocket Test</title>
+</head>
+<body>
+<h2>Connection Status</h2>
+<p id="status-container">waiting...</p>
+<h2>Message received</h2>
+<div id="message-container">
+</div>
+<script>
+  const uri = (window.location.protocol === 'https:' && 'wss://' || 'ws://') + window.location.host + '/api/ws';
+  const connection = new WebSocket(uri);
+  const statusContainer = document.getElementById('status-container');
+  let available_subjects = [];
+  let subjects = new Set();
+  connection.onopen = () => {
+    console.log('connected!');
+    statusContainer.innerText = 'connected'
+  };
+  connection.onclose = () => {
+    console.log('disconnected!');
+    statusContainer.innerText = 'disconnected'
+  };
+  connection.onerror = e => {
+    console.error('error:');
+    console.error(e);
+  };
+  const messageContainer = document.getElementById('message-container');
+  connection.onmessage = e => {
+    const p = document.createElement("p");
+    p.innerText = e.data;
+    messageContainer.appendChild(p);
+  };
+</script>
+</body>
+</html>
