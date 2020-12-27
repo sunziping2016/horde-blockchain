@@ -52,12 +52,15 @@ class OrdererProcessor(PeerProcessor):
             'number': number,
             'transactions': transactions
         }
-        await self.save_blockchain(blockchain)
-        await asyncio.gather(*[
-            self.notify('new-blockchain', self.serialize_blockchain(blockchain),
-                        connection)
-            for connection in self.connection_to_config])
         logging.info('%s: generate block finished %d', self.config['id'], number)
+        if self.verify_num == 1:
+            await self.save_blockchain(blockchain)
+        else:
+            data = self.serialize_blockchain(blockchain)
+            await asyncio.gather(
+                *[self.notify('new-blockchain', data, connection)
+                  for connection in self.connection_to_config])
+            await self.verify_blockchain(blockchain)
 
     @on_requested('submit-transactions', peer_type='admin')
     @on_requested('submit-transactions', peer_type='client')

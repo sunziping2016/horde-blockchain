@@ -93,21 +93,21 @@ def processor(cls: Type[R]) -> Type[R]:
     for func_name, _ in inspect.getmembers(cls):
         func = getattr(cls, func_name)
         if hasattr(func, 'on_server_connected'):
-            peer_type = func.on_server_connected
-            assert peer_type not in cls.server_connected_listeners, 'duplicated handler'
-            cls.server_connected_listeners[peer_type] = func
+            for peer_type in func.on_server_connected:
+                assert peer_type not in cls.server_connected_listeners, 'duplicated handler'
+                cls.server_connected_listeners[peer_type] = func
         if hasattr(func, 'on_client_connected'):
-            peer_type = func.on_client_connected
-            assert peer_type not in cls.client_connected_listeners, 'duplicated handler'
-            cls.client_connected_listeners[peer_type] = func
+            for peer_type in func.on_client_connected:
+                assert peer_type not in cls.client_connected_listeners, 'duplicated handler'
+                cls.client_connected_listeners[peer_type] = func
         if hasattr(func, 'on_notified'):
-            method, peer_type = func.on_notified
-            assert (method, peer_type) not in cls.notification_handlers, 'duplicated handler'
-            cls.notification_handlers[method, peer_type] = func
+            for method, peer_type in func.on_notified:
+                assert (method, peer_type) not in cls.notification_handlers, 'duplicated handler'
+                cls.notification_handlers[method, peer_type] = func
         if hasattr(func, 'on_requested'):
-            method, peer_type = func.on_requested
-            assert (method, peer_type) not in cls.request_handlers, 'duplicated handler'
-            cls.request_handlers[method, peer_type] = func
+            for method, peer_type in func.on_requested:
+                assert (method, peer_type) not in cls.request_handlers, 'duplicated handler'
+                cls.request_handlers[method, peer_type] = func
     return cls
 
 
@@ -118,8 +118,11 @@ def on_server_connected(
     def wrapper(
             func: Callable[[R, Context], Awaitable[None]]
     ) -> Callable[[R, Context], Awaitable[None]]:
-        # noinspection PyTypeHints
-        func.on_server_connected = peer_type  # type: ignore
+        if not hasattr(func, 'on_server_connected'):
+            # noinspection PyTypeHints
+            func.on_server_connected = []  # type: ignore
+        # noinspection PyUnresolvedReferences
+        func.on_server_connected.append(peer_type)  # type: ignore
         return func
     return wrapper
 
@@ -131,8 +134,11 @@ def on_client_connected(
     def wrapper(
             func: Callable[[R, Context], Awaitable[None]]
     ) -> Callable[[R, Context], Awaitable[None]]:
-        # noinspection PyTypeHints
-        func.on_client_connected = peer_type  # type: ignore
+        if not hasattr(func, 'on_client_connected'):
+            # noinspection PyTypeHints
+            func.on_client_connected = []  # type: ignore
+        # noinspection PyUnresolvedReferences
+        func.on_client_connected.append(peer_type)  # type: ignore
         return func
     return wrapper
 
@@ -144,8 +150,11 @@ def on_notified(
     def wrapper(
             func: Callable[[R, Any, Context], Awaitable[None]]
     ) -> Callable[[R, Any, Context], Awaitable[None]]:
-        # noinspection PyTypeHints
-        func.on_notified = method, peer_type  # type: ignore
+        if not hasattr(func, 'on_notified'):
+            # noinspection PyTypeHints
+            func.on_notified = []  # type: ignore
+        # noinspection PyUnresolvedReferences
+        func.on_notified.append((method, peer_type))  # type: ignore
         return func
     return wrapper
 
@@ -157,8 +166,11 @@ def on_requested(
     def wrapper(
             func: Callable[[R, Any, Context], Awaitable[Any]]
     ) -> Callable[[R, Any, Context], Awaitable[Any]]:
-        # noinspection PyTypeHints
-        func.on_requested = method, peer_type  # type: ignore
+        if not hasattr(func, 'on_requested'):
+            # noinspection PyTypeHints
+            func.on_requested = []  # type: ignore
+        # noinspection PyUnresolvedReferences
+        func.on_requested.append((method, peer_type))  # type: ignore
         return func
     return wrapper
 
