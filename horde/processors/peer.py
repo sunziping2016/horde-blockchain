@@ -46,6 +46,7 @@ class PeerProcessor(NodeProcessor):
         self.session = None
 
     async def save_blockchain(self, blockchain: Any) -> None:
+        logging.info('%s: save blockchain %d', self.config['id'], blockchain['number'])
         async with AsyncSession(self.engine) as session:
             async with session.begin():
                 session.add(
