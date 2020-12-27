@@ -5,8 +5,11 @@
       color="primary"
       dark
     >
-      <v-app-bar-title>部落链</v-app-bar-title>
-      <v-spacer></v-spacer>
+      <v-app-bar-title>
+        <router-link to="/" tag="span" style="cursor: pointer">
+          部落链 - Horde Blockchain
+        </router-link>
+      </v-app-bar-title>
     </v-app-bar>
     <v-main>
       <router-view />

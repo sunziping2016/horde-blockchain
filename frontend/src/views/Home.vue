@@ -17,14 +17,14 @@
               two-line
               :to="`/peer/${name}`"
           >
-            <v-list-item-icon>
+            <v-list-item-avatar>
               <v-icon v-if="value.config.type === 'orderer'">
                 mdi-web
               </v-icon>
               <v-icon v-else>
                 mdi-book
               </v-icon>
-            </v-list-item-icon>
+            </v-list-item-avatar>
             <v-list-item-content>
               <v-list-item-title>{{name}}</v-list-item-title>
               <v-list-item-subtitle>
@@ -59,14 +59,10 @@ export default {
 <style scoped lang="scss">
 .home-page {
   max-width: 800px;
-  margin: 0 auto;
-}
-</style>
+  margin: 16px auto;
 
-<style lang="scss">
-.home-page {
   .v-card + .v-card {
-    margin-top: 32px;
+    margin-top: 16px;
   }
 }
 </style>

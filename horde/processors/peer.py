@@ -222,13 +222,18 @@ class PeerProcessor(NodeProcessor):
             stmt = select(AccountState)  # type: ignore
             if condition is not None:
                 stmt = stmt.where(condition)  # type: ignore
+        total_count = list((await self.session.execute(select(
+            func.count(stmt.alias('data').c.hash)))).scalars())
         stmt = stmt.offset(offset).limit(limit)  # type: ignore
         result = list((await self.session.execute(stmt)).scalars())
-        return [{
-            'account': item.account,
-            'version': item.version,
-            'value': float(item.value),
-        } for item in result]
+        return {
+            'data': [{
+                'account': item.account,
+                'version': item.version,
+                'value': float(item.value),
+            } for item in result],
+            'total': total_count[0],
+        }
 
     @on_requested('list-blockchains', peer_type='admin')
     @on_requested('list-blockchains', peer_type='client')
@@ -251,15 +256,19 @@ class PeerProcessor(NodeProcessor):
                 assert offset >= 0
         except (AssertionError, TypeError, KeyError) as error:
             raise RpcError(None, 'bad request') from error
-        # noinspection PyTypeChecker,PyUnresolvedReferences
+        # noinspection PyTypeChecker
+        stmt = select(Blockchain).order_by( # type: ignore
+            Blockchain.number if asc else Blockchain.number.desc())
+        total_count = list((await self.session.execute(select(
+            func.count(stmt.alias('data').c.hash)))).scalars())
         result = list((await self.session.execute(
-            select(Blockchain)  # type: ignore
-                .order_by(Blockchain.number if asc else Blockchain.number.desc())
-                .limit(limit)
-                .offset(offset)
+            stmt.limit(limit).offset(offset)
         )).scalars())
         # noinspection PyTypeChecker
-        return [{
-            'hash': item.hash.hex(),
-            'number': item.number
-        } for item in result]
+        return {
+            'data': [{
+                'hash': item.hash.hex(),
+                'number': item.number
+            } for item in result],
+            'total': total_count[0],
+        }

@@ -6,11 +6,13 @@ Vue.use(Vuex)
 
 export default new Vuex.Store({
   state: {
-    peers: {}
+    this_config: {},
+    peers: {},
   },
   mutations: {
     update_peers(state, connections) {
-      state.peers = connections
+      state.this_config = connections.this_config
+      state.peers = connections.peers
     }
   },
   actions: {
