@@ -46,9 +46,39 @@ class PeerProcessor(NodeProcessor):
         self.session = None
 
     async def save_blockchain(self, blockchain: Any) -> None:
-        logging.info('%s: save blockchain %d', self.config['id'], blockchain['number'])
-        assert self.session
-        # TODO: save blockchain to database
+        async with AsyncSession(self.engine) as session:
+            async with session.begin():
+                session.add(
+                    Blockchain(
+                        hash=blockchain['hash'], prev_hash=blockchain['prev_hash'],
+                        timestamp=blockchain['timestamp'], number=blockchain['number'])
+                )
+                session.add_all([
+                    Transaction(
+                        hash=transaction['hash'], signature=transaction['signature'],
+                        endorser=transaction['endorser'], timestamp=transaction['timestamp'],
+                        blockchain_hash=blockchain['hash'])
+                    for transaction in blockchain['transactions']
+                ])
+                session.add_all([
+                    TransactionMutation(
+                        hash=mutation['hash'], account=mutation['account'],
+                        prev_version=mutation['prev_account_state']['version'],
+                        next_version=mutation['next_account_state']['version'],
+                        transaction_hash=transaction['hash']
+                    )
+                    for transaction in blockchain['transactions']
+                    for mutation in transaction['mutations']
+                ])
+                session.add_all([
+                    AccountState(
+                        hash=account['hash'], version=account['version'],
+                        value=account['value'], account=mutation['account']
+                    )
+                    for transaction in blockchain['transactions']
+                    for mutation in transaction['mutations']
+                    for account in [mutation['next_account_state']]
+                ])
 
     @on_notified('new-blockchain-verified', peer_type='orderer')
     @on_notified('new-blockchain-verified', peer_type='endorser')
