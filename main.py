@@ -4,6 +4,7 @@ import logging
 import os
 import sys
 import traceback
+import platform
 from datetime import datetime
 from pysmx.SM2 import generate_keypair  # type: ignore
 
@@ -164,6 +165,8 @@ def main():
     if args.verbose:
         logging.basicConfig(level=logging.DEBUG)
     if 'func' in args:
+        if platform.system() == "Windows":
+            asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
         asyncio.run(args.func(args))
     else:
         main_parser.print_help()
