@@ -208,7 +208,7 @@ class ClientProcessor(NodeProcessor):
             account = request.rel_url.query.get('account')
             raw_version = request.rel_url.query.get('version')
             version = int(raw_version) if raw_version is not None else None
-            raw_latest_version = request.rel_url.query.get('latest_version')
+            raw_latest_version = request.rel_url.query.get('latest-version')
             if raw_latest_version is not None:
                 assert raw_latest_version in ['true', 'false']
                 latest_version: Optional[bool] = raw_latest_version == 'true'

@@ -3,6 +3,8 @@ import asyncio
 import inspect
 import json
 import logging
+import math
+import os
 import random
 import string
 import traceback
@@ -11,12 +13,16 @@ from dataclasses import dataclass
 from typing import Dict, Set, Any, Callable, TypeVar, Generic, Optional, Tuple, Awaitable, \
     ClassVar, Type
 
+from horde.sm_tls import SMTLSStreamWriter, SMTLSStreamReader, \
+    open_sm_tls_connection, start_sm_tls_server
+
 
 def random_id(n: int) -> str:
     return ''.join(random.choice(string.ascii_uppercase + string.ascii_lowercase +
                                  string.digits) for _ in range(n))
 
 
+PUB_KET_EXT = '.pub.key'
 T = TypeVar("T")
 
 
@@ -192,6 +198,12 @@ class Router:
     shutdown_futures: Dict[str, Future]
     connection_to_config: Dict[str, Optional[Any]]
     task_queue: asyncio.Queue
+
+    public_key: bytes
+    public_keys: Dict[str, bytes]
+    private_key: bytes
+    verify_num: int
+
     server_connected_listeners: ClassVar[Dict[Optional[str],
                                               Callable[['Router', Context], Awaitable[None]]]] = {}
     client_connected_listeners: ClassVar[Dict[Optional[str],
@@ -216,6 +228,17 @@ class Router:
         self.task_queue = asyncio.Queue()
         for node in full_config['peers'] + full_config['clients']:
             self.configs[node['id']] = node
+        with open(os.path.join(self.config['root'], 'private.key'), 'rb') as f:
+            self.private_key = f.read()
+        files = [filename for filename in os.listdir(full_config['public_root'])
+                 if filename.endswith(PUB_KET_EXT)]
+        self.public_keys = {}
+        for file in files:
+            with open(os.path.join(full_config['public_root'], file), 'rb') as f:
+                self.public_keys[file[:-len(PUB_KET_EXT)]] = f.read()
+        self.public_key = self.public_keys[self.config['id']]
+        peer_num = len(full_config['peers'])
+        self.verify_num = peer_num if peer_num <= 3 else 2 * math.ceil((peer_num - 1) / 3) + 1
 
     def close_server(self, server_id):
         for connection_id in self.server_to_connections[server_id]:
@@ -258,8 +281,8 @@ class Router:
 
     async def on_connected(self, id_: str,
                            server_id: Optional[str],
-                           reader: asyncio.StreamReader,
-                           writer: asyncio.StreamWriter,
+                           reader: SMTLSStreamReader,
+                           writer: SMTLSStreamWriter,
                            config: Optional[Any] = None) -> None:
         writer_queue: asyncio.Queue = asyncio.Queue()
         exit_future: Future = Future()
@@ -287,7 +310,7 @@ class Router:
                     logging.info('%s: missing content length', id_)
                     return None
                 content_length = int(headers['content-length'])
-                raw_content = (await reader.read(content_length)).decode()
+                raw_content = (await reader.readexactly(content_length)).decode()
                 return json.loads(raw_content)
             except IncompleteReadError:
                 logging.info('%s: %s connection closed', self.config['id'], id_)
@@ -421,11 +444,13 @@ class Router:
     async def start_server(self, host: str, port: int) -> str:
         id_ = random_id(8)
 
-        async def callback(reader, writer):
+        async def callback(reader, writer, peer_id):
             await self.task_queue.put(asyncio.create_task(self.on_connected(
-                random_id(8), id_, reader, writer)))
-        self.server[id_] = await asyncio.start_server(
+                random_id(8), id_, reader, writer, self.configs[peer_id])))
+        self.server[id_] = await start_sm_tls_server(
             callback,
+            self.private_key,
+            self.public_keys,
             host, port
         )
 
@@ -443,10 +468,13 @@ class Router:
         return id_
 
     async def start_connection(self, peer_host, peer_port: int,
-                               peer_config: Optional[Any] = None) -> str:
+                               peer_config: Any) -> str:
         id_ = random_id(8)
         assert id_ not in self.server
-        reader, writer = await asyncio.open_connection(peer_host, peer_port)
+        reader, writer = await open_sm_tls_connection(
+            self.config['id'], self.private_key,
+            self.public_keys[peer_config['id']],
+            peer_host, peer_port)
         await self.task_queue.put(asyncio.create_task(
             self.on_connected(id_, None, reader, writer, peer_config)))
         return id_

@@ -1,13 +1,8 @@
-import argparse
-import math
-import os
 from datetime import datetime
-from typing import Dict, Any
+from typing import Any
 
 from horde.models import AccountState, TransactionMutation, Transaction, Blockchain
 from horde.processors.router import Router, processor, on_requested, Context
-
-PUB_KET_EXT = '.pub.key'
 
 
 class WrongHash(Exception):
@@ -20,24 +15,6 @@ class WrongSignature(Exception):
 
 @processor
 class NodeProcessor(Router):
-    public_key: bytes
-    public_keys: Dict[str, bytes]
-    private_key: bytes
-    verify_num: int
-
-    def __init__(self, config: Any, full_config: Any, args: argparse.Namespace):
-        super().__init__(config, full_config, args)
-        with open(os.path.join(self.config['root'], 'private.key'), 'rb') as f:
-            self.private_key = f.read()
-        files = [filename for filename in os.listdir(full_config['public_root'])
-                 if filename.endswith(PUB_KET_EXT)]
-        self.public_keys = {}
-        for file in files:
-            with open(os.path.join(full_config['public_root'], file), 'rb') as f:
-                self.public_keys[file[:-len(PUB_KET_EXT)]] = f.read()
-        self.public_key = self.public_keys[self.config['id']]
-        peer_num = len(full_config['peers'])
-        self.verify_num = peer_num if peer_num <= 3 else 2 * math.ceil((peer_num - 1) / 3) + 1
 
     @staticmethod
     def check_valid_account_state(account: str, data: Any) -> Any:
