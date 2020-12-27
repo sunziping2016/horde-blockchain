@@ -128,7 +128,7 @@ class NodeProcessor(Router):
                           for mutation in data['mutations']],
         }
 
-    def check_blockchain_transaction(self, data: Any) -> Any:
+    def check_valid_blockchain(self, data: Any) -> Any:
         block_hash = data['hash']
         assert isinstance(block_hash, str)
         block_hash = bytes.fromhex(block_hash)

@@ -8,7 +8,8 @@ from sqlalchemy.orm import subqueryload
 
 from horde.models import Blockchain, Transaction, TransactionMutation, AccountState
 from horde.processors.node import NodeProcessor
-from horde.processors.router import processor, on_requested, on_client_connected, Context, RpcError
+from horde.processors.router import processor, on_requested, on_client_connected, Context, \
+    RpcError, on_notified
 
 
 @processor
@@ -35,6 +36,14 @@ class PeerProcessor(NodeProcessor):
         await super().start()
         await self.session.close()
         self.session = None
+
+    async def save_blockchain(self, blockchain: Any) -> None:
+        assert self.session
+        # TODO: save blockchain to database
+
+    @on_notified('new-blockchain', peer_type='ordered')
+    async def new_blockchain_handler(self, data: Any, context: Context) -> None:
+        pass
 
     @on_requested('query-blockchain', peer_type='admin')
     @on_requested('query-blockchain', peer_type='client')
