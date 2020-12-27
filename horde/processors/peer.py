@@ -1,6 +1,8 @@
 import argparse
+import asyncio
+import logging
 import os
-from typing import Any, Optional
+from typing import Any, Optional, Dict, Tuple
 
 from sqlalchemy import select, and_, func
 from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine, AsyncSession  # type: ignore
@@ -12,16 +14,22 @@ from horde.processors.router import processor, on_requested, on_client_connected
     RpcError, on_notified
 
 
+class BlockchainRejected(Exception):
+    pass
+
+
 @processor
 class PeerProcessor(NodeProcessor):
     engine: AsyncEngine
     session: Optional[AsyncSession]
+    blockchains: Dict[bytes, Tuple[Any, int]]
 
     def __init__(self, config: Any, full_config: Any, args: argparse.Namespace):
         super().__init__(config, full_config, args)
         self.engine = create_async_engine('sqlite:///' +
                                           os.path.join(self.config['root'], 'sqlite.db'))
         self.session = None
+        self.blockchains = {}
 
     @on_client_connected()
     async def on_client_connected(self, context: Context) -> None:
@@ -38,12 +46,86 @@ class PeerProcessor(NodeProcessor):
         self.session = None
 
     async def save_blockchain(self, blockchain: Any) -> None:
+        logging.info('%s: save blockchain %d', self.config['id'], blockchain['number'])
         assert self.session
         # TODO: save blockchain to database
 
-    @on_notified('new-blockchain', peer_type='ordered')
+    @on_notified('new-blockchain-verified', peer_type='orderer')
+    @on_notified('new-blockchain-verified', peer_type='endorser')
+    async def new_blockchain_verified_handler(self, data: Any, context: Context) -> None:
+        blockchain_hash = bytes.fromhex(data['hash'])
+        if data['verified'] and blockchain_hash in self.blockchains:
+            old_tuple = self.blockchains[blockchain_hash]
+            if old_tuple[1] + 1 >= self.verify_num:
+                del self.blockchains[blockchain_hash]
+                await self.save_blockchain(old_tuple[0])
+            else:
+                new_tuple = old_tuple[0], old_tuple[1] + 1
+                self.blockchains[blockchain_hash] = new_tuple
+
+    async def verify_blockchain(self, blockchain: Any) -> None:
+        assert self.session is not None
+        verified: Optional[bool] = None
+        try:
+            self.blockchains[blockchain['hash']] = blockchain, 0
+            subquery1 = select(func.max(Blockchain.number).label('latest_number')).alias('latest')
+            # noinspection PyTypeChecker
+            results1 = list((await self.session.execute(
+                select(Blockchain)  # type: ignore
+                    .join(subquery1, Blockchain.number == subquery1.c.latest_number)
+            )).scalars())
+            assert len(results1) == 1
+            prev: Blockchain = results1[0]
+            assert blockchain['number'] == prev.number + 1
+            assert blockchain['prev_hash'] == prev.hash
+            accounts: Dict[str, Any] = {}
+            for transaction in blockchain['transactions']:
+                for mutation in transaction['mutations']:
+                    account = mutation['account']
+                    assert account not in accounts
+                    accounts[account] = mutation['prev_account_state']
+            subquery2 = select(
+                AccountState.account,  # type: ignore
+                func.max(AccountState.version).label('latest_version')
+            ) \
+                .where(AccountState.account.in_(list(accounts.keys()))) \
+                .group_by(AccountState.account).alias('latest')
+            # noinspection PyUnresolvedReferences,PyTypeChecker
+            results2 = list((await self.session.execute(
+                select(AccountState).join(  # type: ignore
+                    subquery2,
+                    and_(
+                        AccountState.account == subquery2.c.account,  # type: ignore
+                        AccountState.version == subquery2.c.latest_version,  # type: ignore
+                    ),
+                )
+            )).scalars())
+            assert len(accounts) == len(results2)
+            for account_result in results2:
+                account = accounts[account_result.account]
+                assert account['version'] == account_result.version
+                assert account['value'] == account_result.value
+            verified = True
+            old_tuple = self.blockchains[blockchain['hash']]
+            new_tuple = old_tuple[0], old_tuple[1] + 1
+            self.blockchains[blockchain['hash']] = new_tuple
+        except:  # pylint:disable=bare-except
+            verified = False
+        finally:
+            assert verified is not None
+            await asyncio.gather(*[
+                self.notify('new-blockchain-verified', {
+                    'hash': blockchain['hash'].hex(),
+                    'verified': verified,
+                }, connection) for connection in self.connection_to_config])
+            logging.info('%s: %s block %d', self.config['id'],
+                         'accept' if verified else 'reject', blockchain['number'])
+
+    @on_notified('new-blockchain', peer_type='orderer')
     async def new_blockchain_handler(self, data: Any, context: Context) -> None:
-        pass
+        assert self.session is not None
+        blockchain = self.check_valid_blockchain(data)
+        await self.verify_blockchain(blockchain)
 
     @on_requested('query-blockchain', peer_type='admin')
     @on_requested('query-blockchain', peer_type='client')
