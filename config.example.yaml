@@ -26,15 +26,15 @@ clients:
     root: data/client1
     port: 16489
   - id: client2
-    type: account
+    type: client
     root: data/client2
     port: 16490
   - id: client3
-    type: account
+    type: client
     root: data/client3
     port: 16491
   - id: client4
-    type: account
+    type: client
     root: data/client4
     port: 16492
 web:

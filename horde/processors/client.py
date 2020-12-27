@@ -26,6 +26,8 @@ class ClientProcessor(NodeProcessor):
         self.generate_routes()
 
     def generate_routes(self):
+        web_root_path = os.path.join(self.full_config['web']['static_root'])
+        os.makedirs(web_root_path, exist_ok=True)
         self.app.add_routes([
             web.get(r'/api/ws', self.websocket_handler),
             web.post(r'/api/transaction/transfer-money', self.transfer_money_api),
@@ -35,7 +37,7 @@ class ClientProcessor(NodeProcessor):
             web.get(r'/api/{peer}/accounts', self.query_accounts_api),
             web.get(r'/api/{peer}/blockchains/', self.list_blockchains_api),
             web.get(r'/api/{peer}/blockchains/{blockchain:\d+}', self.query_blockchain_api),
-            web.static(r'/', os.path.join(self.full_config['web']['static_root'])),
+            web.static(r'/', os.path.join(web_root_path)),
         ])
 
     async def websocket_handler(self, request: web.Request) -> web.WebSocketResponse:
