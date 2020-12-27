@@ -22,6 +22,7 @@ class ClientProcessor(NodeProcessor):
 
     def generate_routes(self):
         self.app.add_routes([
+            web.get(r'/api/connections', self.global_topology_api),
             web.get(r'/api/{peer}/connections', self.query_topology_api),
             web.post(r'/api/transaction/transfer-money', self.tansfer_money_api),
             web.get(r'/api/{peer}/accounts/', self.query_accounts_api),
@@ -54,6 +55,32 @@ class ClientProcessor(NodeProcessor):
                 connection = connection2
                 break
         return connection
+
+    async def global_topology_api(self, request: web.Request) -> web.Response:
+        connections = []
+        ids = []
+        for connection, config in self.connection_to_config.items():
+            if config is not None:
+                connections.append(connection)
+                ids.append(config['id'])
+        requests = []
+        for connection in connections:
+            new_request = self.request('query-topology', None, connection)
+            requests.append(new_request)
+        try:
+            results = await asyncio.gather(*requests)
+            return web.json_response({
+                'result': [{
+                    ids[index]: result
+                } for index, result in enumerate(results)]
+            })
+        except RpcError as error:
+            return web.json_response({
+                'error': {
+                    'message': str(error),
+                    'data': error.data,
+                },
+            }, status=400)
 
     async def query_blockchain_api(self, request: web.Request) -> web.Response:
         peer = request.match_info.get('peer')
