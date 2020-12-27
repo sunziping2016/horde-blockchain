@@ -35,7 +35,7 @@ class ClientProcessor(NodeProcessor):
             web.get(r'/api/connections', self.global_topology_api),
             web.get(r'/api/{peer}/connections', self.query_topology_api),
             web.get(r'/api/{peer}/accounts', self.query_accounts_api),
-            web.get(r'/api/{peer}/blockchains/', self.list_blockchains_api),
+            web.get(r'/api/{peer}/blockchains', self.list_blockchains_api),
             web.get(r'/api/{peer}/blockchains/{blockchain:\d+}', self.query_blockchain_api),
             web.static(r'/', os.path.join(web_root_path)),
         ])
@@ -130,7 +130,10 @@ class ClientProcessor(NodeProcessor):
         try:
             results = await asyncio.gather(*requests)
             return web.json_response({
-                'result': {ids[index]: result for index, result in enumerate(results)}
+                'result': {
+                    'self': self.config,
+                    'peers': {ids[index]: result for index, result in enumerate(results)}
+                }
             })
         except RpcError as error:
             return web.json_response({

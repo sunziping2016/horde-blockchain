@@ -47,8 +47,39 @@ class PeerProcessor(NodeProcessor):
 
     async def save_blockchain(self, blockchain: Any) -> None:
         logging.info('%s: save blockchain %d', self.config['id'], blockchain['number'])
-        assert self.session
-        # TODO: save blockchain to database
+        async with AsyncSession(self.engine) as session:
+            async with session.begin():
+                session.add(
+                    Blockchain(
+                        hash=blockchain['hash'], prev_hash=blockchain['prev_hash'],
+                        timestamp=blockchain['timestamp'], number=blockchain['number'])
+                )
+                session.add_all([
+                    Transaction(
+                        hash=transaction['hash'], signature=transaction['signature'],
+                        endorser=transaction['endorser'], timestamp=transaction['timestamp'],
+                        blockchain_hash=blockchain['hash'])
+                    for transaction in blockchain['transactions']
+                ])
+                session.add_all([
+                    TransactionMutation(
+                        hash=mutation['hash'], account=mutation['account'],
+                        prev_version=mutation['prev_account_state']['version'],
+                        next_version=mutation['next_account_state']['version'],
+                        transaction_hash=transaction['hash']
+                    )
+                    for transaction in blockchain['transactions']
+                    for mutation in transaction['mutations']
+                ])
+                session.add_all([
+                    AccountState(
+                        hash=account['hash'], version=account['version'],
+                        value=account['value'], account=mutation['account']
+                    )
+                    for transaction in blockchain['transactions']
+                    for mutation in transaction['mutations']
+                    for account in [mutation['next_account_state']]
+                ])
 
     @on_notified('new-blockchain-verified', peer_type='orderer')
     @on_notified('new-blockchain-verified', peer_type='endorser')
@@ -222,13 +253,18 @@ class PeerProcessor(NodeProcessor):
             stmt = select(AccountState)  # type: ignore
             if condition is not None:
                 stmt = stmt.where(condition)  # type: ignore
+        total_count = list((await self.session.execute(select(
+            func.count(stmt.alias('data').c.hash)))).scalars())
         stmt = stmt.offset(offset).limit(limit)  # type: ignore
         result = list((await self.session.execute(stmt)).scalars())
-        return [{
-            'account': item.account,
-            'version': item.version,
-            'value': float(item.value),
-        } for item in result]
+        return {
+            'data': [{
+                'account': item.account,
+                'version': item.version,
+                'value': float(item.value),
+            } for item in result],
+            'total': total_count[0],
+        }
 
     @on_requested('list-blockchains', peer_type='admin')
     @on_requested('list-blockchains', peer_type='client')
@@ -251,15 +287,19 @@ class PeerProcessor(NodeProcessor):
                 assert offset >= 0
         except (AssertionError, TypeError, KeyError) as error:
             raise RpcError(None, 'bad request') from error
-        # noinspection PyTypeChecker,PyUnresolvedReferences
+        # noinspection PyTypeChecker
+        stmt = select(Blockchain).order_by( # type: ignore
+            Blockchain.number if asc else Blockchain.number.desc())
+        total_count = list((await self.session.execute(select(
+            func.count(stmt.alias('data').c.hash)))).scalars())
         result = list((await self.session.execute(
-            select(Blockchain)  # type: ignore
-                .order_by(Blockchain.number if asc else Blockchain.number.desc())
-                .limit(limit)
-                .offset(offset)
+            stmt.limit(limit).offset(offset)
         )).scalars())
         # noinspection PyTypeChecker
-        return [{
-            'hash': item.hash.hex(),
-            'number': item.number
-        } for item in result]
+        return {
+            'data': [{
+                'hash': item.hash.hex(),
+                'number': item.number
+            } for item in result],
+            'total': total_count[0],
+        }

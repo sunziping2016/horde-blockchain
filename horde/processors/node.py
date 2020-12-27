@@ -78,6 +78,7 @@ class NodeProcessor(Router):
         }
 
     def check_valid_transaction(self, data: Any) -> Any:
+        assert isinstance(data, dict)
         transaction_hash = data['hash']
         assert isinstance(transaction_hash, str)
         transaction_hash = bytes.fromhex(transaction_hash)

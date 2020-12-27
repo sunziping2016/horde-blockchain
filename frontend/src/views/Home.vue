@@ -10,7 +10,7 @@
       <v-card-title>节点拓扑结构</v-card-title>
       <v-card-text >
           <div style="display:flex; flex-direction: column; align-items:center">
-            <svg id="node-topo-svg" :width="width" :height="height">
+            <svg id="node-topo-svg" :width="width" :height="height" :viewBox="min_x+' '+min_y + ' ' + width+' '+height" >
               <g>
                 <router-link v-for="node in Object.values(nodes_layout)" :to="`/peer/${node.id}`" :key="node.id">
                   <foreignObject :x=node.x-node_r :y=node.y-node_r :width=node_r*2 :height=node_r*2>
@@ -32,14 +32,14 @@
               :to="`/peer/${name}`"
               :ref="name+'-list'"
           >
-            <v-list-item-icon>
+            <v-list-item-avatar>
               <v-icon v-if="value.config.type === 'orderer'">
                 mdi-web
               </v-icon>
               <v-icon v-else>
                 mdi-book
               </v-icon>
-            </v-list-item-icon>
+            </v-list-item-avatar>
             <v-list-item-content>
               <v-list-item-title>{{name}}</v-list-item-title>
               <v-list-item-subtitle>
@@ -55,7 +55,100 @@
       </v-card-text>
     </v-card>
     <v-card>
+      <v-card-title>客户端配置</v-card-title>
+      <v-card-text>
+        <v-list>
+          <v-list-item
+              v-for="(value, name) in this_config"
+              :key="name"
+              two-line
+          >
+            <v-list-item-content>
+              <v-list-item-title >{{name}}</v-list-item-title>
+              <v-list-item-subtitle>{{value}}</v-list-item-subtitle>
+            </v-list-item-content>
+          </v-list-item>
+        </v-list>
+      </v-card-text>
+    </v-card>
+    <v-card>
       <v-card-title>交易</v-card-title>
+      <v-card-text>
+        <v-data-table
+            v-model="transaction_selected"
+            :headers="transaction_headers"
+            :items="transactions"
+            item-key="id"
+            show-select
+        >
+          <template #item.hash="{ item }">
+            <code style="background-color: transparent">
+              {{item.hash}}
+            </code>
+          </template>
+          <template #item.signature="{ item }">
+            <code style="background-color: transparent">
+              {{item.signature}}
+            </code>
+          </template>
+        </v-data-table>
+        <div class="d-flex align-end">
+          <v-select
+              :items="orderers"
+              v-model="transaction_orderer"
+              label="排序节点"
+              class="mr-4"
+              hide-details
+          ></v-select>
+          <v-btn
+              color="primary"
+              :loading="transaction_loading"
+              :disabled="!transaction_valid"
+              @click="submit_transaction"
+          >
+            提交
+          </v-btn>
+        </div>
+        <v-alert
+            class="mt-2"
+            v-if="transaction_alert"
+            type="error"
+        >{{transaction_alert}}</v-alert>
+      </v-card-text>
+    </v-card>
+    <v-card v-if="this_config.type === 'admin'">
+      <v-card-title>背书发钱</v-card-title>
+      <v-card-text>
+        <div class="d-flex align-end">
+          <v-select
+              :items="endorsers"
+              v-model="make_money_endorser"
+              label="背书节点"
+              class="mr-4"
+              hide-details
+          ></v-select>
+          <v-text-field
+              v-model="make_money_amount"
+              type="number"
+              label="交易额"
+              class="mr-4"
+              hide-details
+          ></v-text-field>
+          <v-btn
+              color="primary"
+              :loading="make_money_loading"
+              :disabled="!make_money_valid"
+              @click="make_money"
+          >
+            提交
+          </v-btn>
+        </div>
+        <v-alert
+            class="mt-2"
+            v-if="make_money_alert"
+            type="error"
+        >{{make_money_alert}}</v-alert>
+      </v-card-text>
     </v-card>
   </div>
 </template>
@@ -66,81 +159,67 @@ import dagre from 'dagre';
 
 export default {
   name: 'Home',
+  data: () => ({
+    transaction_headers: [
+      {text: '时间', value: 'timestamp'},
+      {text: '背书节点', value: 'endorser'},
+      {text: '散列值', value: 'hash', sortable: false},
+      {text: '签名', value: 'signature', sortable: false},
+    ],
+    transaction_selected: [],
+    transaction_orderer: '',
+    transaction_alert: '',
+    transaction_loading: false,
+    make_money_endorser: '',
+    make_money_amount: '',
+    make_money_alert: '',
+    make_money_loading: false,
+    node_r: 12,
+    dagre_config: {
+      rankdir: "LR",
+      nodesep:5,
+      ranksep:90,
+      acyclicer: "greedy",
+      ranker: "tight-tree",
+      edgesep: 30
+    },
+    nodes_layout: [],
+    edges_layout: [],
+    width:0,
+    height:0,
+    min_x:Number.MAX_SAFE_INTEGER,
+    min_y:Number.MAX_SAFE_INTEGER
+  }),
   computed: {
-    ...mapState(['peers'])
-  },
-  data() {
-    return {
-      node_r: 12,
-      dagre_config: {
-        rankdir: "LR",
-        nodesep:5,
-        ranksep:90,
-        acyclicer: "greedy",
-        ranker: "tight-tree",
-        edgesep: 30
-      },
-      nodes_layout: [],
-      edges_layout: [],
-      width:0,
-      height:0
+    ...mapState(['peers', 'this_config']),
+    endorsers() {
+      return Object.values(this.peers)
+        .filter(x => x.config.type === 'endorser')
+        .map(x => x.config.id)
+    },
+    orderers() {
+      return Object.values(this.peers)
+          .filter(x => x.config.type === 'orderer')
+          .map(x => x.config.id)
+    },
+    make_money_valid() {
+      return this.make_money_endorser !== '' &&
+          parseFloat(this.make_money_amount) > 0
+    },
+    transaction_valid() {
+      return this.transaction_orderer !== '' &&
+          this.transaction_selected.length > 0
+    },
+    transactions() {
+      return Object.values(this.$store.state.transactions)
+        .map(transaction => ({
+          id: transaction.hash,
+          timestamp: transaction.timestamp,
+          endorser: transaction.endorser,
+          hash: transaction.hash.slice(0, 16),
+          signature: transaction.signature.slice(0, 16),
+        }))
     }
-  },
-  methods: {
-    one_edge : function (points) {
-        // const movePoint = (p, x, y, s) => {
-        //     return { x: p.x * s + x, y: p.y * s + y }
-        // };
-        // points = points.map(p => movePoint(p, transX, transY, scale))
-
-
-        let len = points.length;
-        if (len === 0) { return "" }
-        let start = `M ${points[0].x} ${points[0].y}`,
-            vias = [];
-
-        const getInter = (p1, p2, n) => {
-            return `${p1.x * n + p2.x * (1 - n)} ${p1.y * n + p2.y * (1 - n)}`
-        };
-
-        const getCurve = (points) => {
-            let vias = [],
-                len = points.length;
-            const ratio = 0.5;
-            for (let i = 0; i < len - 2; i++) {
-                let p1, p2, p3, p4, p5;
-                if (i === 0) {
-                    p1 = `${points[i].x} ${points[i].y}`
-                } else {
-                    p1 = getInter(points[i], points[i + 1], ratio)
-                }
-                p2 = getInter(points[i], points[i + 1], 1 - ratio);
-                p3 = `${points[i + 1].x} ${points[i + 1].y}`;
-                p4 = getInter(points[i + 1], points[i + 2], ratio);
-                if (i === len - 3) {
-                    p5 = `${points[i + 2].x} ${points[i + 2].y}`
-                } else {
-                    p5 = getInter(points[i + 1], points[i + 2], 1 - ratio)
-                }
-                let cPath = `M ${p1} L${p2} Q${p3} ${p4} L${p5}`;
-                vias.push(cPath);
-            }
-            return vias
-        };
-        vias = getCurve(points);
-        let pathData = `${start}  ${vias.join(' ')}`;
-        return pathData;
-    },
-    node_onmouseenter: function (nodeid) {
-      console.log("mouseenter");
-        let that = this;
-        that.$refs[nodeid+"-list"][0].$el.focus();
-    },
-    node_onmouseleave: function (nodeid) {
-      console.log("mouseleave");
-        let that = this;
-        that.$refs[nodeid+"-list"][0].$el.blur();
-    },
   },
   mounted() {
     let that = this;
@@ -197,9 +276,95 @@ export default {
       }
       that.width = max_x-min_x+that.node_r*4;
       that.height = max_y-min_y+that.node_r*4;
+      that.min_x = min_x-that.node_r*2;
+      that.min_y = min_y-that.node_r*2;
     });
+  },
+  methods: {
+    one_edge : function (points) {
+        // const movePoint = (p, x, y, s) => {
+        //     return { x: p.x * s + x, y: p.y * s + y }
+        // };
+        // points = points.map(p => movePoint(p, transX, transY, scale))
 
 
+        let len = points.length;
+        if (len === 0) { return "" }
+        let start = `M ${points[0].x} ${points[0].y}`,
+            vias = [];
+
+        const getInter = (p1, p2, n) => {
+            return `${p1.x * n + p2.x * (1 - n)} ${p1.y * n + p2.y * (1 - n)}`
+        };
+
+        const getCurve = (points) => {
+            let vias = [],
+                len = points.length;
+            const ratio = 0.5;
+            for (let i = 0; i < len - 2; i++) {
+                let p1, p2, p3, p4, p5;
+                if (i === 0) {
+                    p1 = `${points[i].x} ${points[i].y}`
+                } else {
+                    p1 = getInter(points[i], points[i + 1], ratio)
+                }
+                p2 = getInter(points[i], points[i + 1], 1 - ratio);
+                p3 = `${points[i + 1].x} ${points[i + 1].y}`;
+                p4 = getInter(points[i + 1], points[i + 2], ratio);
+                if (i === len - 3) {
+                    p5 = `${points[i + 2].x} ${points[i + 2].y}`
+                } else {
+                    p5 = getInter(points[i + 1], points[i + 2], 1 - ratio)
+                }
+                let cPath = `M ${p1} L${p2} Q${p3} ${p4} L${p5}`;
+                vias.push(cPath);
+            }
+            return vias
+        };
+        vias = getCurve(points);
+        let pathData = `${start}  ${vias.join(' ')}`;
+        return pathData;
+    },
+    node_onmouseenter: function (nodeid) {
+      console.log("mouseenter");
+        let that = this;
+        that.$refs[nodeid+"-list"][0].$el.focus();
+    },
+    node_onmouseleave: function (nodeid) {
+      console.log("mouseleave");
+        let that = this;
+        that.$refs[nodeid+"-list"][0].$el.blur();
+    },
+    make_money() {
+      if (!this.make_money_valid)
+        return
+      this.make_money_loading = true
+      this.$store.dispatch('make_money', {
+        endorser: this.make_money_endorser,
+        amount: parseFloat(this.make_money_amount),
+      })
+        .then(() => {
+          this.make_money_alert = ''
+        }, error => {
+          this.make_money_alert = error.response.data.error.message
+        })
+        .finally(() => this.make_money_loading = false)
+    },
+    submit_transaction() {
+      if (!this.transaction_valid)
+        return
+      this.transaction_loading = true
+      this.$store.dispatch('submit_transaction', {
+        orderer: this.transaction_orderer,
+        data: this.transaction_selected.map(x => x.id),
+      })
+        .then(() => {
+          this.transaction_alert = ''
+        }, error => {
+          this.transaction_alert = error.response.data.error.message
+        })
+        .finally(() => this.transaction_loading = false)
+    }
   }
 }
 </script>
@@ -207,14 +372,10 @@ export default {
 <style scoped lang="scss">
 .home-page {
   max-width: 800px;
-  margin: 0 auto;
-}
-</style>
+  margin: 16px auto;
 
-<style lang="scss">
-.home-page {
   .v-card + .v-card {
-    margin-top: 32px;
+    margin-top: 16px;
   }
 }
 </style>
