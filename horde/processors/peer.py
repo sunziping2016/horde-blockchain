@@ -163,7 +163,10 @@ class PeerProcessor(NodeProcessor):
             config = self.connection_to_config[connection]
             if config is not None:
                 result.append(config['id'])
-        return result
+        return {
+            'config': self.config,
+            'connections': result
+        }
 
     @on_requested('query-accounts', peer_type='admin')
     @on_requested('query-accounts', peer_type='client')
