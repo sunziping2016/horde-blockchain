@@ -117,7 +117,8 @@ class EndorserProcessor(PeerProcessor):
             total_amount = 0.0
             for item in temp_data:
                 amount = item['amount']
-                assert isinstance(amount, float)
+                assert isinstance(amount, (int, float))
+                amount = float(amount)
                 assert amount > 0.0
                 total_amount += amount
                 amount = round(amount, ACCOUNT_PRECISION)

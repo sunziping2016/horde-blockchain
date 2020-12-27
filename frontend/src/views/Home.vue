@@ -150,6 +150,59 @@
         >{{make_money_alert}}</v-alert>
       </v-card-text>
     </v-card>
+    <v-card>
+      <v-card-title>背书转帐</v-card-title>
+      <v-card-text>
+        <v-data-table
+            :headers="transfer_money_headers"
+            :items="transfer_money_items"
+        ></v-data-table>
+        <div class="d-flex align-end">
+          <v-text-field
+              v-model="transfer_money_item_target"
+              label="转帐对方"
+              class="mr-4"
+              hide-details
+          ></v-text-field>
+          <v-text-field
+              v-model="transfer_money_item_amount"
+              type="number"
+              label="转帐交易"
+              class="mr-4"
+              hide-details
+          ></v-text-field>
+          <v-btn
+              color="primary"
+              :disabled="!transfer_money_item_valid"
+              @click="add_transfer_money_item"
+          >
+            添加
+          </v-btn>
+        </div>
+        <div class="d-flex align-end">
+          <v-select
+              :items="endorsers"
+              v-model="transfer_money_endorser"
+              label="背书节点"
+              class="mr-4"
+              hide-details
+          ></v-select>
+          <v-btn
+              color="primary"
+              :loading="transfer_money_loading"
+              :disabled="!transfer_money_valid"
+              @click="transfer_money"
+          >
+            提交
+          </v-btn>
+        </div>
+        <v-alert
+            class="mt-2"
+            v-if="transfer_money_alert"
+            type="error"
+        >{{transfer_money_alert}}</v-alert>
+      </v-card-text>
+    </v-card>
   </div>
 </template>
 
@@ -188,7 +241,17 @@ export default {
     width:0,
     height:0,
     min_x:Number.MAX_SAFE_INTEGER,
-    min_y:Number.MAX_SAFE_INTEGER
+    min_y:Number.MAX_SAFE_INTEGER,
+    transfer_money_endorser: '',
+    transfer_money_headers: [
+      {text: '转帐对象', value: 'target'},
+      {text: '转帐金额', value: 'amount'},
+    ],
+    transfer_money_item_target: '',
+    transfer_money_item_amount: '',
+    transfer_money_items: [],
+    transfer_money_alert: '',
+    transfer_money_loading: false,
   }),
   computed: {
     ...mapState(['peers', 'this_config']),
@@ -209,6 +272,19 @@ export default {
     transaction_valid() {
       return this.transaction_orderer !== '' &&
           this.transaction_selected.length > 0
+    },
+    transfer_money_valid() {
+      return this.transfer_money_endorser !== '' &&
+          this.transfer_money_items.length > 0
+    },
+    transfer_money_item_valid() {
+      for (const item of this.transfer_money_items) {
+        if (item.target === this.transfer_money_item_target) {
+          return false
+        }
+      }
+      return this.transfer_money_item_target !== '' &&
+        parseFloat(this.transfer_money_item_amount) > 0
     },
     transactions() {
       return Object.values(this.$store.state.transactions)
@@ -326,12 +402,10 @@ export default {
         return pathData;
     },
     node_onmouseenter: function (nodeid) {
-      console.log("mouseenter");
         let that = this;
         that.$refs[nodeid+"-list"][0].$el.focus();
     },
     node_onmouseleave: function (nodeid) {
-      console.log("mouseleave");
         let that = this;
         that.$refs[nodeid+"-list"][0].$el.blur();
     },
@@ -350,6 +424,24 @@ export default {
         })
         .finally(() => this.make_money_loading = false)
     },
+    transfer_money() {
+      if (!this.transfer_money_valid)
+        return
+      this.transfer_money_loading = true
+      this.$store.dispatch('transfer_money', {
+        endorser: this.transfer_money_endorser,
+        data: this.transfer_money_items.map(x => ({
+          target: x.target,
+          amount: parseFloat(x.amount),
+        })),
+      })
+          .then(() => {
+            this.transfer_money_alert = ''
+          }, error => {
+            this.transfer_money_alert = error.response.data.error.message
+          })
+          .finally(() => this.transfer_money_loading = false)
+    },
     submit_transaction() {
       if (!this.transaction_valid)
         return
@@ -364,6 +456,14 @@ export default {
           this.transaction_alert = error.response.data.error.message
         })
         .finally(() => this.transaction_loading = false)
+    },
+    add_transfer_money_item() {
+      if (!this.transfer_money_item_valid)
+        return
+      this.transfer_money_items.push({
+        target: this.transfer_money_item_target,
+        amount: parseFloat(this.transfer_money_item_amount).toFixed(3),
+      })
     }
   }
 }

@@ -60,6 +60,84 @@
               <v-list-item-subtitle>{{blockchain.timestamp}}</v-list-item-subtitle>
             </v-list-item-content>
           </v-list-item>
+          <v-list-group
+              :value="true"
+          >
+            <template v-slot:activator>
+              <v-list-item-content>
+                <v-list-item-title>交易</v-list-item-title>
+              </v-list-item-content>
+            </template>
+            <div
+                v-for="(transaction, index) in blockchain.transactions"
+                :key="transaction.hash"
+            >
+              <v-divider v-if="index !== 0"></v-divider>
+              <v-subheader>交易 {{index + 1}}</v-subheader>
+              <v-list-item two-line>
+                <v-list-item-content>
+                  <v-list-item-title>背书节点</v-list-item-title>
+                  <v-list-item-subtitle>{{transaction.endorser}}</v-list-item-subtitle>
+                </v-list-item-content>
+              </v-list-item>
+              <v-list-item two-line>
+                <v-list-item-content>
+                  <v-list-item-title>时间</v-list-item-title>
+                  <v-list-item-subtitle>{{transaction.timestamp}}</v-list-item-subtitle>
+                </v-list-item-content>
+              </v-list-item>
+              <v-list-item two-line>
+                <v-list-item-content>
+                  <v-list-item-title>交易签名</v-list-item-title>
+                  <v-list-item-subtitle>
+                    <code style="background-color: transparent">
+                      {{transaction.signature}}
+                    </code>
+                  </v-list-item-subtitle>
+                </v-list-item-content>
+              </v-list-item>
+              <v-list-group
+                  :value="true"
+              >
+                <template v-slot:activator>
+                  <v-list-item-content>
+                    <v-list-item-title>更改</v-list-item-title>
+                  </v-list-item-content>
+                </template>
+                <div
+                    v-for="(mutation, index) in transaction.mutations"
+                    :key="mutation.hash"
+                >
+                  <v-divider v-if="index !== 0"></v-divider>
+                  <v-subheader>更改 {{index + 1}}</v-subheader>
+                  <v-list-item two-line>
+                    <v-list-item-content>
+                      <v-list-item-title>账户</v-list-item-title>
+                      <v-list-item-subtitle>{{mutation.account}}</v-list-item-subtitle>
+                    </v-list-item-content>
+                  </v-list-item>
+                  <v-list-item two-line>
+                    <v-list-item-content>
+                      <v-list-item-title>旧状态</v-list-item-title>
+                      <v-list-item-subtitle>
+                        版本 {{mutation.prev_account_state.version}}：
+                        金额 {{mutation.prev_account_state.value}}
+                      </v-list-item-subtitle>
+                    </v-list-item-content>
+                  </v-list-item>
+                  <v-list-item two-line>
+                    <v-list-item-content>
+                      <v-list-item-title>新状态</v-list-item-title>
+                      <v-list-item-subtitle>
+                        版本 {{mutation.next_account_state.version}}：
+                        金额 {{mutation.next_account_state.value}}
+                      </v-list-item-subtitle>
+                     </v-list-item-content>
+                  </v-list-item>
+                </div>
+              </v-list-group>
+            </div>
+          </v-list-group>
         </v-list>
       </v-card-text>
       <v-card-text v-else class="d-flex justify-center">

@@ -194,7 +194,7 @@ export default {
       this.account_loading = true
       axios.get(`/${this.this_id}/accounts`, {
         params: {
-          'lateset-version': this.account_latest,
+          'latest-version': this.account_latest,
           'offset': this.account_items_per_page * (this.account_page - 1),
           'limit': this.account_items_per_page,
         }

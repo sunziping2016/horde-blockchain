@@ -32,6 +32,10 @@ export default new Vuex.Store({
       const transaction = (await axios.post('/transaction/make-money', payload)).data.result
       commit('insert_transaction', transaction)
     },
+    async transfer_money({commit}, payload) {
+      const transaction = (await axios.post('/transaction/transfer-money', payload)).data.result
+      commit('insert_transaction', transaction)
+    },
     async submit_transaction({state, commit}, payload) {
       const transactions = payload.data.map(hash => state.transactions[hash])
       await axios.post('/transaction/submit', {
