@@ -17,6 +17,7 @@ from horde.processors.router import processor, RpcError, on_notified, Context
 @processor
 class ClientProcessor(NodeProcessor):
     app: web.Application
+    web_root: str
     websocket_outgoing_queue: asyncio.Queue
 
     def __init__(self, config: Any, full_config: Any, args: argparse.Namespace):
@@ -24,10 +25,9 @@ class ClientProcessor(NodeProcessor):
         self.app = web.Application()
         self.websocket_outgoing_queue = asyncio.Queue()
         self.generate_routes()
+        self.web_root = os.path.join(self.full_config['web']['static_root'], 'index.html')
 
     def generate_routes(self):
-        web_root_path = os.path.join(self.full_config['web']['static_root'])
-        os.makedirs(web_root_path, exist_ok=True)
         self.app.add_routes([
             web.get(r'/api/ws', self.websocket_handler),
             web.post(r'/api/transaction/transfer-money', self.transfer_money_api),
@@ -37,8 +37,11 @@ class ClientProcessor(NodeProcessor):
             web.get(r'/api/{peer}/accounts', self.query_accounts_api),
             web.get(r'/api/{peer}/blockchains', self.list_blockchains_api),
             web.get(r'/api/{peer}/blockchains/{blockchain:\d+}', self.query_blockchain_api),
-            web.static(r'/', os.path.join(web_root_path)),
+            web.get(r'/{tail:.*}', self.static_file_handler),
         ])
+
+    async def static_file_handler(self, request) -> web.FileResponse:
+        return web.FileResponse(self.web_root)
 
     async def websocket_handler(self, request: web.Request) -> web.WebSocketResponse:
         socket = web.WebSocketResponse()
@@ -112,7 +115,7 @@ class ClientProcessor(NodeProcessor):
                 await asyncio.sleep(0.2)
                 webbrowser.open(url)
             await self.task_queue.put(asyncio.create_task(open_webpage(
-                'http://%s:%d/index.html' % (host, port))))
+                'http://%s:%d/' % (host, port))))
         for peer in self.full_config['peers']:
             peer_host, peer_port = peer['public_addr']
             await self.start_connection(peer_host, peer_port, self.configs[peer['id']])
