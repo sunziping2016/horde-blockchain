@@ -2,9 +2,9 @@ import argparse
 import asyncio
 import json
 import logging
-import os
 import webbrowser
 from json import JSONDecodeError
+from pathlib import Path
 from typing import Any, Optional, Tuple
 
 import aiohttp
@@ -17,7 +17,7 @@ from horde.processors.router import processor, RpcError, on_notified, Context
 @processor
 class ClientProcessor(NodeProcessor):
     app: web.Application
-    web_root: str
+    web_root: Path
     websocket_outgoing_queue: asyncio.Queue
 
     def __init__(self, config: Any, full_config: Any, args: argparse.Namespace):
@@ -25,7 +25,7 @@ class ClientProcessor(NodeProcessor):
         self.app = web.Application()
         self.websocket_outgoing_queue = asyncio.Queue()
         self.generate_routes()
-        self.web_root = os.path.join(self.full_config['web']['static_root'], 'index.html')
+        self.web_root = Path(self.full_config['web']['static_root'])
 
     def generate_routes(self):
         self.app.add_routes([
@@ -41,7 +41,13 @@ class ClientProcessor(NodeProcessor):
         ])
 
     async def static_file_handler(self, request) -> web.FileResponse:
-        return web.FileResponse(self.web_root)
+        relative_file_path = Path(request.path).relative_to('/')
+        file_path = self.web_root / relative_file_path
+        if file_path.exists():
+            if file_path.is_dir():
+                return web.FileResponse(file_path / 'index.html')
+            return web.FileResponse(file_path)
+        return web.FileResponse(self.web_root / 'index.html')
 
     async def websocket_handler(self, request: web.Request) -> web.WebSocketResponse:
         socket = web.WebSocketResponse()
